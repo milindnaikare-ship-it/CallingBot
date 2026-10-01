@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}Admin{% endblock %} &middot; CallingBot</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% set path = request.url.path %}
+{% set nav = [
+  ("/", "Dashboard"),
+  ("/distributors", "Distributors"),
+  ("/campaigns", "Campaigns"),
+  ("/calls", "Calls"),
+  ("/callbacks", "Callbacks"),
+  ("/messages", "Outbox"),
+  ("/import", "Import"),
+  ("/simulator", "Simulator"),
+] %}
+<header class="topbar">
+  <a class="brand" href="/">CallingBot</a>
+  <nav aria-label="Main">
+    {% for href, label in nav %}
+    {% set active = (path == href) if href == "/" else path.startswith(href) %}
+    <a href="{{ href }}"{% if active %} class="active" aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+    <a href="/export/leads.csv">Export leads</a>
+  </nav>
+  <span class="env env-{{ app_env }}" title="APP_ENV">{{ app_env }}</span>
+</header>
+<main>
+  {% if flash %}<div class="flash flash-{{ flash.level }}" role="status">{{ flash.message }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer>Times are shown in {{ timezone }}. Phone numbers are masked except on the distributor page.</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

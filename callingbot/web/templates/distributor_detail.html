@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, detail, duration %}
+{% block title %}{{ d.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ d.name }} {{ badge(d.status) }}{% if on_dnc_list and (d.status|val) != 'do_not_call' %} {{ badge('do_not_call') }}{% endif %}</h1>
+  <a href="/distributors">&larr; All distributors</a>
+</div>
+
+{% if d.do_not_call %}
+<div class="notice notice-error">Do not call: {{ d.dnc_reason or 'opted out' }}. This distributor is excluded from every campaign.</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Profile</h2>
+    <dl class="props">
+      <dt>ARN</dt><dd class="mono">{{ d.arn or '-' }}</dd>
+      <dt>EUIN</dt><dd class="mono">{{ d.euin or '-' }}</dd>
+      <dt>ARN valid till</dt><dd>{{ d.arn_valid_till.strftime('%d %b %Y') if d.arn_valid_till else '-' }}</dd>
+      <dt>Firm</dt><dd>{{ d.firm_name or '-' }}</dd>
+      <dt>Phone</dt><dd class="mono">{{ d.phone }}</dd>
+      <dt>Alternate phone</dt><dd class="mono">{{ d.alt_phone or '-' }}</dd>
+      <dt>Email</dt><dd>{{ d.email or '-' }}</dd>
+      <dt>Location</dt><dd>{{ [d.city, d.state, d.pincode]|select|join(', ') or '-' }}</dd>
+      <dt>Language</dt><dd>{{ d.preferred_language or 'default' }}</dd>
+      <dt>Source</dt><dd>{{ d.source or '-' }}</dd>
+      <dt>Added</dt><dd>{{ d.created_at|local }}</dd>
+      <dt>Updated</dt><dd>{{ d.updated_at|local }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Actions</h2>
+    {% if not d.do_not_call %}
+    <form method="post" action="/distributors/{{ d.id }}/status">
+      <div class="field">
+        <label for="new-status">Change status</label>
+        <select id="new-status" name="status">
+          {% for s in statuses %}<option value="{{ s|val }}" {% if (s|val) == (d.status|val) %}selected{% endif %}>{{ s|label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="status-reason">Reason (audited)</label>
+        <input type="text" id="status-reason" name="reason" maxlength="200" placeholder="e.g. empanelment confirmed by Ops">
+      </div>
+      <button type="submit">Update status</button>
+    </form>
+    <hr>
+    <form method="post" action="/distributors/{{ d.id }}/dnc">
+      <div class="field">
+        <label for="dnc-reason">Add to do-not-call list</label>
+        <input type="text" id="dnc-reason" name="reason" maxlength="200" placeholder="e.g. asked by email not to be called">
+      </div>
+      <button type="submit" class="danger">Add to DNC</button>
+    </form>
+    <hr>
+    {% else %}
+    <p class="muted">Opt-outs cannot be reversed from the dashboard.</p>
+    {% endif %}
+    <form method="post" action="/distributors/{{ d.id }}/notes">
+      <div class="field">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" maxlength="10000">{{ d.notes or '' }}</textarea>
+      </div>
+      <button type="submit" class="secondary">Save notes</button>
+    </form>
+  </section>
+</div>
+
+<h2>Campaigns</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Campaign</th><th>State</th><th>Attempts</th><th>Last attempt</th><th>Next attempt</th><th>Final outcome</th></tr></thead>
+    <tbody>
+    {% for c in contacts %}
+      <tr>
+        <td>{{ c.campaign.name }}</td>
+        <td>{{ badge(c.state) }}</td>
+        <td>{{ c.attempts }}</td>
+        <td class="nowrap">{{ c.last_attempt_at|local }}</td>
+        <td class="nowrap">{{ c.next_attempt_at|local if c.next_attempt_at else ('as soon as possible' if (c.state|val) == 'pending' else '-') }}</td>
+        <td>{{ badge(c.final_outcome) if c.final_outcome else '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">Not in any campaign.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Calls</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>When</th><th>Provider</th><th>Status</th><th>Outcome</th><th>Interest</th><th>Turns</th><th>Duration</th><th>Summary</th></tr></thead>
+    <tbody>
+    {% for call in calls %}
+      <tr>
+        <td><a href="/calls/{{ call.id }}">{{ call.id }}</a></td>
+        <td class="nowrap">{{ call.created_at|local }}</td>
+        <td>{{ call.provider }}</td>
+        <td>{{ badge(call.status) }}</td>
+        <td>{{ badge(call.outcome) if call.outcome else '-' }}</td>
+        <td>{{ badge(call.interest_level) if call.interest_level else '-' }}</td>
+        <td>{{ call.turn_count }}</td>
+        <td>{{ duration(call.duration_seconds) }}</td>
+        <td class="message-body">{{ call.summary or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">No calls yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Messages</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>When</th><th>Channel</th><th>To</th><th>Status</th><th>Body</th></tr></thead>
+    <tbody>
+    {% for m in messages %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td class="nowrap">{{ m.created_at|local }}</td>
+        <td>{{ m.channel|label }}</td>
+        <td class="mono">{{ m.destination }}</td>
+        <td>{{ badge(m.status) }}{% if m.error %}<br><span class="small muted">{{ m.error }}</span>{% endif %}</td>
+        <td class="message-body">{{ m.body }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No messages.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Callbacks and follow-ups</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Type</th><th>With</th><th>Notes</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for cb in callbacks %}
+      <tr>
+        <td class="nowrap">{{ cb.scheduled_for|local }}</td>
+        <td>{{ cb.kind|label }}</td>
+        <td>{{ 'RM' if cb.with_rm else 'Bot' }}</td>
+        <td class="message-body">{{ cb.notes or '' }}</td>
+        <td>{{ badge(cb.status) }}</td>
+        <td>{% if (cb.status|val) == 'pending' %}
+          <form class="inline" method="post" action="/callbacks/{{ cb.id }}/done">
+            <input type="hidden" name="next" value="/distributors/{{ d.id }}">
+            <button type="submit" class="small secondary">Done</button>
+          </form>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No callbacks.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Audit trail</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Event</th><th>Call</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for ev in events %}
+      <tr>
+        <td class="nowrap">{{ ev.created_at|local('%d %b %Y %H:%M:%S') }}</td>
+        <td class="mono">{{ ev.kind }}</td>
+        <td>{% if ev.call_id %}<a href="/calls/{{ ev.call_id }}">#{{ ev.call_id }}</a>{% else %}-{% endif %}</td>
+        <td class="small">{{ detail(ev.detail) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">No audit events.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, pagination, options %}
+{% block title %}Outbox{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Outbox</h1></div>
+<p class="muted">Every message the bot sends is recorded here. In outbox mode messages are only <em>queued</em>: send them by hand from the
+  distributor's page (which shows the full number) and mark them as sent.</p>
+
+<form class="filters" method="get" action="/messages">
+  <div class="field">
+    <label for="status">Status</label>
+    <select id="status" name="status">{{ options(statuses, status) }}</select>
+  </div>
+  <div class="field">
+    <label for="channel">Channel</label>
+    <select id="channel" name="channel">{{ options(channels, channel) }}</select>
+  </div>
+  <button type="submit">Filter</button>
+</form>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>When</th><th>Channel</th><th>To</th><th>Distributor</th><th>Message</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for m in messages %}
+      {% set d = distributors.get(m.distributor_id) %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td class="nowrap">{{ m.created_at|local }}</td>
+        <td>{{ m.channel|label }}</td>
+        <td class="mono nowrap">{{ mask_destination(m.channel, m.destination) }}</td>
+        <td>{% if d %}<a href="/distributors/{{ d.id }}">{{ d.name }}</a>{% else %}-{% endif %}{% if m.call_id %}<br><a class="small" href="/calls/{{ m.call_id }}">call #{{ m.call_id }}</a>{% endif %}</td>
+        <td class="message-body">{{ m.body }}</td>
+        <td>{{ badge(m.status) }}{% if m.sent_at %}<br><span class="small muted">{{ m.sent_at|local }}</span>{% endif %}{% if m.error %}<br><span class="small muted">{{ m.error }}</span>{% endif %}</td>
+        <td>{% if (m.status|val) != 'sent' %}
+          <form class="inline" method="post" action="/messages/{{ m.id }}/mark-sent"><button type="submit" class="small secondary">Mark sent</button></form>
+        {% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">No messages.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pagination(pager) }}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, pagination, options %}
+{% block title %}Distributors{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Distributors</h1>
+  <a class="button secondary" href="/import">Import CSV</a>
+</div>
+
+<form class="filters" method="get" action="/distributors" role="search">
+  <div class="field">
+    <label for="q">Search</label>
+    <input type="search" id="q" name="q" value="{{ q }}" placeholder="Name, ARN, city or firm" maxlength="100">
+  </div>
+  <div class="field">
+    <label for="status">Status</label>
+    <select id="status" name="status">{{ options(statuses, status) }}</select>
+  </div>
+  <button type="submit">Filter</button>
+  {% if q or status %}<a class="button secondary" href="/distributors">Clear</a>{% endif %}
+</form>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>ARN</th><th>Firm</th><th>City</th><th>Phone</th><th>Status</th><th>Updated</th></tr></thead>
+    <tbody>
+    {% for d in distributors %}
+      <tr>
+        <td><a href="/distributors/{{ d.id }}">{{ d.name }}</a></td>
+        <td class="mono nowrap">{{ d.arn or '-' }}</td>
+        <td>{{ d.firm_name or '-' }}</td>
+        <td>{{ d.city or '-' }}</td>
+        <td class="mono nowrap">{{ d.phone|mask }}</td>
+        <td>{{ badge(d.status) }}{% if d.do_not_call and (d.status|val) != 'do_not_call' %} {{ badge('do_not_call') }}{% endif %}</td>
+        <td class="nowrap small muted">{{ d.updated_at|local }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No distributors match. <a href="/import">Import a CSV</a>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pagination(pager) }}
+{% endblock %}

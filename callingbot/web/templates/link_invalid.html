@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Link not valid</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="public">
+    <h1>This link is not valid</h1>
+    <p>The link may have been copied incompletely. Please use the link exactly as it was sent to you.</p>
+    {% if amc.distributor_helpline or amc.distributor_email %}
+    <p class="muted">Need help with empanelment? Contact {{ amc.name }}{% if amc.distributor_helpline %} at {{ amc.distributor_helpline }}{% endif %}{% if amc.distributor_email %}{% if amc.distributor_helpline %} or{% endif %} {{ amc.distributor_email }}{% endif %}.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

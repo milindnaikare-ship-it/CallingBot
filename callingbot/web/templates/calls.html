@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, pagination, options, duration %}
+{% block title %}Calls{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Calls</h1></div>
+
+<form class="filters" method="get" action="/calls">
+  <div class="field">
+    <label for="status">Status</label>
+    <select id="status" name="status">{{ options(statuses, status) }}</select>
+  </div>
+  <div class="field">
+    <label for="outcome">Outcome</label>
+    <select id="outcome" name="outcome">{{ options(outcomes, outcome) }}</select>
+  </div>
+  {% if request.query_params.get('campaign_id') %}<input type="hidden" name="campaign_id" value="{{ request.query_params.get('campaign_id') }}">{% endif %}
+  <button type="submit">Filter</button>
+  {% if status or outcome or request.query_params.get('campaign_id') %}<a class="button secondary" href="/calls">Clear</a>{% endif %}
+</form>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>When</th><th>Distributor</th><th>Campaign</th><th>Provider</th><th>Status</th><th>Outcome</th><th>Turns</th><th>Duration</th><th>Flags</th></tr></thead>
+    <tbody>
+    {% for call in calls %}
+      <tr>
+        <td><a href="/calls/{{ call.id }}">{{ call.id }}</a></td>
+        <td class="nowrap">{{ call.created_at|local }}</td>
+        <td><a href="/distributors/{{ call.distributor_id }}">{{ call.distributor.name }}</a><br><span class="mono small muted">{{ call.distributor.phone|mask }}</span></td>
+        <td>{{ campaigns[call.campaign_id].name if call.campaign_id in campaigns else '-' }}</td>
+        <td>{{ call.provider }}</td>
+        <td>{{ badge(call.status) }}</td>
+        <td>{{ badge(call.outcome) if call.outcome else '-' }}</td>
+        <td>{{ call.turn_count }}</td>
+        <td>{{ duration(call.duration_seconds) }}</td>
+        <td>{% if flagged.get(call.id) %}<span class="badge s-flag">{{ flagged[call.id] }} flagged</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="empty">No calls match.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pagination(pager) }}
+{% endblock %}

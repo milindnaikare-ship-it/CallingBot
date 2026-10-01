@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Simulator{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Call simulator</h1>
+  <span class="muted">LLM: <strong>{{ llm_model }}</strong></span>
+</div>
+
+<p class="muted">You play the distributor. The bot is the real conversation engine with the approved script, tools and compliance
+  screen; no phone call is made. The call is saved like any other and appears under <a href="/calls">Calls</a>.</p>
+
+{% if live_channels %}
+<div class="notice notice-warn">Messaging providers are live ({{ live_channels|join(', ') }}): links the bot sends during a simulated call are
+  really delivered to the distributor's phone or email. Use the demo distributor to avoid messaging real people.</div>
+{% endif %}
+
+<section class="card" id="simulator">
+  <div class="sim-controls">
+    <div class="field">
+      <label for="sim-distributor">Distributor</label>
+      <select id="sim-distributor">
+        <option value="">Demo distributor (ARN-000000, Mumbai)</option>
+        {% for d in distributors %}
+        <option value="{{ d.id }}">{{ d.name }}{% if d.arn %} - {{ d.arn }}{% endif %}{% if d.city %} - {{ d.city }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="sim-language">Language</label>
+      <select id="sim-language">
+        <option value="">Distributor's preference</option>
+        {% for lang in languages %}<option value="{{ lang.code }}">{{ lang.name }} ({{ lang.code }})</option>{% endfor %}
+      </select>
+    </div>
+    <button type="button" id="sim-start">Start call</button>
+    <label class="check"><input type="checkbox" id="sim-speak"> Read bot replies aloud</label>
+  </div>
+  <p class="small muted">The list shows the first {{ picker_limit }} distributors by name; distributors who opted out are not listed.
+    A real distributor's funnel status is updated by the simulated call.</p>
+
+  <div class="transcript" id="sim-transcript" aria-live="polite">
+    <p class="muted" id="sim-placeholder">Press "Start call" to hear the greeting.</p>
+  </div>
+
+  <form class="sim-input" id="sim-form" autocomplete="off">
+    <input type="text" id="sim-text" maxlength="2000" placeholder="Type what the distributor says..." disabled>
+    <button type="submit" id="sim-send" disabled>Send</button>
+    <button type="button" class="secondary" id="sim-silence" disabled>Stay silent</button>
+    <button type="button" class="danger" id="sim-hangup" disabled>Hang up</button>
+  </form>
+
+  <div class="sim-status" id="sim-status" hidden></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/simulator.js" defer></script>{% endblock %}

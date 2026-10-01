@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboard</h1>
+  <a class="button secondary" href="/api/stats">Stats JSON</a>
+</div>
+
+<div class="info-bar">
+  <span>LLM: <strong>{{ llm_model }}</strong></span>
+  <span>Telephony: <strong>{{ provider_name }}</strong></span>
+  <span>NFO: <strong>{{ kb.nfo.scheme_name }}</strong>
+    (opens {{ kb.nfo.nfo_open_date.strftime('%d %b %Y') }}{% if kb.nfo.nfo_close_date %}, closes {{ kb.nfo.nfo_close_date.strftime('%d %b %Y') }}{% endif %})</span>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="value">{{ stats.distributors_total }}</div><div class="label">Distributors</div></div>
+  <div class="stat"><div class="value">{{ stats.calls_total }}</div><div class="label">Calls</div></div>
+  <div class="stat"><div class="value">{{ stats.connected }}</div><div class="label">Connected ({{ '%.0f'|format(stats.connect_rate * 100) }}%)</div></div>
+  <div class="stat"><div class="value">{{ stats.links_sent }}</div><div class="label">Links sent</div></div>
+  <div class="stat"><div class="value">{{ stats.link_clicks }}</div><div class="label">Link clicks</div></div>
+  <div class="stat"><div class="value">{{ stats.callbacks_pending }}</div><div class="label">Callbacks pending</div></div>
+  <div class="stat"><div class="value">{{ stats.opt_outs }}</div><div class="label">Opt-outs</div></div>
+  <div class="stat"><div class="value">{{ '%.0f'|format(stats.avg_call_duration_seconds) }}s</div><div class="label">Avg call duration</div></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Empanelment funnel</h2>
+    <div class="funnel">
+      {% for label, count in stats.funnel %}
+      <span>{{ label }}</span>
+      <progress value="{{ count }}" max="{{ funnel_max }}" aria-label="{{ label }}">{{ count }}</progress>
+      <strong class="right">{{ count }}</strong>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="card">
+    <h2>Call outcomes</h2>
+    <div class="funnel">
+      {% for outcome, count in stats.calls_by_outcome.items() if count %}
+      <span>{{ badge(outcome) }}</span>
+      <progress value="{{ count }}" max="{{ [stats.calls_total, 1]|max }}" aria-label="{{ outcome }}">{{ count }}</progress>
+      <strong class="right">{{ count }}</strong>
+      {% else %}
+      <span class="muted">No call outcomes yet.</span>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<h2>Active campaigns</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Campaign</th><th>Contacts</th><th>Pending</th><th>Done</th><th>Calls</th><th>Connected</th><th>Links sent</th><th>Clicks</th><th>Opt-outs</th></tr></thead>
+    <tbody>
+    {% for c, s in campaign_stats %}
+      <tr>
+        <td><a href="/calls?campaign_id={{ c.id }}">{{ c.name }}</a></td>
+        <td>{{ s.contacts_by_state.values()|sum }}</td>
+        <td>{{ s.contacts_by_state.pending }}</td>
+        <td>{{ s.contacts_by_state.done }}</td>
+        <td>{{ s.calls_total }}</td>
+        <td>{{ s.connected }} ({{ '%.0f'|format(s.connect_rate * 100) }}%)</td>
+        <td>{{ s.links_sent }}</td>
+        <td>{{ s.link_clicks }}</td>
+        <td>{{ s.opt_outs }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty">No active campaign. <a href="/campaigns">Manage campaigns</a>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="grid grid-2">
+  <section>
+    <h2>Recent calls</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>When</th><th>Distributor</th><th>Status</th><th>Outcome</th></tr></thead>
+        <tbody>
+        {% for call in recent_calls %}
+          <tr>
+            <td><a href="/calls/{{ call.id }}">{{ call.id }}</a></td>
+            <td class="nowrap">{{ call.created_at|local }}</td>
+            <td><a href="/distributors/{{ call.distributor_id }}">{{ call.distributor.name }}</a><br><span class="muted small mono">{{ call.distributor.phone|mask }}</span></td>
+            <td>{{ badge(call.status) }}</td>
+            <td>{{ badge(call.outcome) if call.outcome else '-' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="empty">No calls yet. Try the <a href="/simulator">simulator</a>.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section>
+    <h2>Upcoming callbacks</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>When</th><th>Distributor</th><th>Type</th><th>With</th></tr></thead>
+        <tbody>
+        {% for cb in upcoming %}
+          {% set d = callback_distributors.get(cb.distributor_id) %}
+          <tr>
+            <td class="nowrap">{{ cb.scheduled_for|local }}</td>
+            <td>{% if d %}<a href="/distributors/{{ d.id }}">{{ d.name }}</a>{% if d.do_not_call %} {{ badge('do_not_call') }}{% endif %}{% else %}#{{ cb.distributor_id }}{% endif %}</td>
+            <td>{{ cb.kind|label }}</td>
+            <td>{{ 'RM' if cb.with_rm else 'Bot' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty">No pending callbacks.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small"><a href="/callbacks">All callbacks &rarr;</a></p>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Import distributors{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Import distributors</h1></div>
+
+{% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <form method="post" action="/import" enctype="multipart/form-data">
+      <div class="field">
+        <label for="file">CSV or Excel (.xlsx) file</label>
+        <input type="file" id="file" name="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      </div>
+      <div class="field">
+        <label for="source">Source label</label>
+        <input type="text" id="source" name="source" maxlength="100" placeholder="e.g. amfi_export_2026-10 (default: the file name)">
+      </div>
+      <div class="field">
+        <label for="campaign_id">Also add the imported distributors to campaign</label>
+        <select id="campaign_id" name="campaign_id">
+          <option value="">(none)</option>
+          {% for c in campaigns %}<option value="{{ c.id }}">{{ c.name }} ({{ c.status|label }})</option>{% endfor %}
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" name="update_existing" value="on" checked> Update distributors that already exist (matched by ARN, else mobile)</label>
+      <button type="submit">Import</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>File format</h2>
+    <p>The first sheet / header row is read; column names from AMFI exports and common CRM spellings are recognised.
+      Each row needs a <strong>name</strong> and a valid <strong>Indian mobile number</strong>; the ARN is optional but must be valid when present.</p>
+    <p class="muted small">Only the columns needed to call and empanel a distributor are kept (name, firm, ARN, EUIN, phones, email, city, state, PIN, ARN validity, language).
+      A number on the do-not-call list is imported but stays excluded from every campaign. Existing status, opt-outs and notes are never changed by an import.</p>
+  </section>
+</div>
+{% endblock %}

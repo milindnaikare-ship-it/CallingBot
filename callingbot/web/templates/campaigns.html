@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge %}
+{% block title %}Campaigns{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Campaigns</h1></div>
+
+<section class="card">
+  <h2>New campaign</h2>
+  <form class="filters" method="post" action="/campaigns">
+    <div class="field">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" maxlength="200" required placeholder="e.g. NFO Launch October">
+    </div>
+    <div class="field">
+      <label for="description">Description</label>
+      <input type="text" id="description" name="description" maxlength="2000">
+    </div>
+    <button type="submit">Create</button>
+  </form>
+</section>
+
+<p class="muted small">"Dial now" runs one dialling pass with the <strong>{{ provider_name }}</strong> provider: only inside the calling window,
+  within pacing and concurrency limits, skipping do-not-call and ineligible distributors.</p>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Campaign</th><th>Status</th>{% for s in states %}<th>{{ s|replace('_', ' ') }}</th>{% endfor %}<th>Started</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for c in campaigns %}
+      {% set by_state = counts.get(c.id, {}) %}
+      {% set st = c.status|val %}
+      <tr>
+        <td><strong>{{ c.name }}</strong>{% if c.description %}<br><span class="small muted">{{ c.description }}</span>{% endif %}
+          <br><a class="small" href="/calls?campaign_id={{ c.id }}">Calls</a> &middot; <a class="small" href="/export/leads.csv?campaign_id={{ c.id }}">Leads CSV</a></td>
+        <td>{{ badge(c.status) }}</td>
+        {% for s in states %}<td>{{ by_state.get(s, 0) }}</td>{% endfor %}
+        <td class="nowrap small">{{ c.started_at|local }}{% if c.completed_at %}<br>completed {{ c.completed_at|local }}{% endif %}</td>
+        <td>
+          <div class="actions">
+            {% if st != 'completed' %}
+            <form class="inline" method="post" action="/campaigns/{{ c.id }}/add-eligible"><button type="submit" class="small secondary">Add eligible</button></form>
+            {% endif %}
+            {% if st != 'active' %}
+            <form class="inline" method="post" action="/campaigns/{{ c.id }}/start"><button type="submit" class="small">Start</button></form>
+            {% else %}
+            <form class="inline" method="post" action="/campaigns/{{ c.id }}/dial-now"><button type="submit" class="small">Dial now</button></form>
+            <form class="inline" method="post" action="/campaigns/{{ c.id }}/pause"><button type="submit" class="small secondary">Pause</button></form>
+            {% endif %}
+            {% if st != 'completed' %}
+            <form class="inline" method="post" action="/campaigns/{{ c.id }}/complete"><button type="submit" class="small secondary">Complete</button></form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ states|length + 4 }}" class="empty">No campaigns yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

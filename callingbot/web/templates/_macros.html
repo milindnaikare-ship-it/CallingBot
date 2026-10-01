@@ -1,0 +1,32 @@
+{# Shared template helpers. #}
+
+{% macro badge(value, extra="") -%}
+{%- set v = value|val -%}
+<span class="badge s-{{ v or 'none' }} {{ extra }}">{{ (v or '-')|replace('_', ' ') }}</span>
+{%- endmacro %}
+
+{% macro pagination(p) -%}
+{% if p.pages > 1 or p.total > 0 %}
+<div class="pager">
+  {% if p.prev_url %}<a class="button secondary" href="{{ p.prev_url }}">&larr; Previous</a>{% endif %}
+  <span>Page {{ p.page }} of {{ p.pages }} &middot; {{ p.total }} total</span>
+  {% if p.next_url %}<a class="button secondary" href="{{ p.next_url }}">Next &rarr;</a>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro options(values, selected, blank="All") -%}
+<option value="">{{ blank }}</option>
+{% for item in values %}
+{% set v = item|val %}
+<option value="{{ v }}" {% if v == selected %}selected{% endif %}>{{ v|replace('_', ' ') }}</option>
+{% endfor %}
+{%- endmacro %}
+
+{% macro detail(d) -%}
+{% if d %}{% for k, v in d.items() %}<span class="kv"><b>{{ k }}</b> {{ v if v is not none else '-' }}</span>{% endfor %}{% endif %}
+{%- endmacro %}
+
+{% macro duration(seconds) -%}
+{% if seconds is none %}-{% else %}{{ (seconds // 60) }}:{{ '%02d'|format(seconds % 60) }}{% endif %}
+{%- endmacro %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, pagination, options %}
+{% block title %}Callbacks{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Callbacks and follow-ups</h1></div>
+
+<form class="filters" method="get" action="/callbacks">
+  <div class="field">
+    <label for="status">Status</label>
+    <select id="status" name="status">{{ options(statuses, status) }}</select>
+  </div>
+  <button type="submit">Filter</button>
+</form>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Type</th><th>Distributor</th><th>With</th><th>Notes</th><th>Call</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for cb in callbacks %}
+      {% set d = distributors.get(cb.distributor_id) %}
+      <tr>
+        <td class="nowrap">{{ cb.scheduled_for|local }}</td>
+        <td>{{ cb.kind|label }}</td>
+        <td>{% if d %}<a href="/distributors/{{ d.id }}">{{ d.name }}</a><br><span class="mono small muted">{{ d.phone|mask }}</span>{% if d.do_not_call %} {{ badge('do_not_call') }}{% endif %}{% else %}#{{ cb.distributor_id }}{% endif %}</td>
+        <td>{{ 'RM' if cb.with_rm else 'Bot' }}</td>
+        <td class="message-body">{{ cb.notes or '' }}</td>
+        <td>{% if cb.call_id %}<a href="/calls/{{ cb.call_id }}">#{{ cb.call_id }}</a>{% else %}-{% endif %}</td>
+        <td>{{ badge(cb.status) }}</td>
+        <td>{% if (cb.status|val) == 'pending' %}
+          <form class="inline" method="post" action="/callbacks/{{ cb.id }}/done"><button type="submit" class="small secondary">Done</button></form>
+        {% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">No callbacks.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pagination(pager) }}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Import result{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Import result</h1>
+  <div class="actions"><a class="button secondary" href="/import">Import another file</a><a class="button secondary" href="/distributors">Distributors</a></div>
+</div>
+<p class="muted">{{ filename }} &middot; source <span class="mono">{{ source }}</span></p>
+
+<div class="stats">
+  <div class="stat"><div class="value">{{ report.created }}</div><div class="label">Created</div></div>
+  <div class="stat"><div class="value">{{ report.updated }}</div><div class="label">Updated</div></div>
+  <div class="stat"><div class="value">{{ report.skipped }}</div><div class="label">Skipped (unchanged)</div></div>
+  <div class="stat"><div class="value">{{ report.errors|length }}</div><div class="label">Errors (not imported)</div></div>
+  <div class="stat"><div class="value">{{ report.dnc_marked }}</div><div class="label">Marked do-not-call</div></div>
+</div>
+
+{% if campaign %}
+<div class="notice notice-info">Added {{ added }} eligible distributor(s) to campaign <strong>{{ campaign.name }}</strong> ({{ campaign.status|label }}).
+  {% if (campaign.status|val) != 'active' %}Start it on the <a href="/campaigns">campaigns page</a>.{% endif %}</div>
+{% endif %}
+
+{% for title, rows in [("Errors (rows not imported)", report.errors), ("Warnings", report.warnings)] if rows %}
+<h2>{{ title }}</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Row</th><th>Reason</th></tr></thead>
+    <tbody>
+    {% for row_no, reason in rows[:max_rows_shown] %}
+      <tr><td>{{ row_no }}</td><td>{{ reason }}</td></tr>
+    {% endfor %}
+    {% if rows|length > max_rows_shown %}<tr><td colspan="2" class="empty">... and {{ rows|length - max_rows_shown }} more</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endblock %}

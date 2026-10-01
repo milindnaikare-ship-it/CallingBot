@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, detail, duration %}
+{% block title %}Call #{{ call.id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Call #{{ call.id }} {{ badge(call.status) }} {% if call.outcome %}{{ badge(call.outcome) }}{% endif %}</h1>
+  <div class="actions"><a class="button secondary" href="/api/calls/{{ call.id }}">JSON</a><a href="/calls">&larr; All calls</a></div>
+</div>
+
+{% if flagged_count %}
+<div class="notice notice-warn">{{ flagged_count }} bot line(s) were blocked by the compliance screen and replaced with a safe reply. Review them below.</div>
+{% endif %}
+{% if call.error %}<div class="notice notice-error">Error: {{ call.error }}</div>{% endif %}
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Call</h2>
+    <dl class="props">
+      <dt>Distributor</dt><dd><a href="/distributors/{{ d.id }}">{{ d.name }}</a> <span class="mono muted">{{ d.arn or '' }} {{ d.phone|mask }}</span></dd>
+      <dt>Campaign</dt><dd>{{ campaign.name if campaign else '-' }}</dd>
+      <dt>Provider</dt><dd>{{ call.provider }}{% if call.provider_call_id %} <span class="mono small muted">{{ call.provider_call_id }}</span>{% endif %}</dd>
+      <dt>Language</dt><dd>{{ call.language }}</dd>
+      <dt>Answered by</dt><dd>{{ call.answered_by or '-' }}</dd>
+      <dt>Created</dt><dd>{{ call.created_at|local('%d %b %Y %H:%M:%S') }}</dd>
+      <dt>Answered</dt><dd>{{ call.answered_at|local('%d %b %Y %H:%M:%S') }}</dd>
+      <dt>Ended</dt><dd>{{ call.ended_at|local('%d %b %Y %H:%M:%S') }}</dd>
+      <dt>Duration</dt><dd>{{ duration(call.duration_seconds) }}</dd>
+      <dt>Turns</dt><dd>{{ call.turn_count }} distributor turn(s), {{ call.no_input_count }} silence(s)</dd>
+      <dt>Recording</dt><dd>{% if recording_url %}<a href="{{ recording_url }}" rel="noopener noreferrer" target="_blank">Open recording</a>{% else %}-{% endif %}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Outcome</h2>
+    <dl class="props">
+      <dt>Outcome</dt><dd>{{ badge(call.outcome) if call.outcome else '-' }}</dd>
+      <dt>Interest</dt><dd>{{ badge(call.interest_level) if call.interest_level else '-' }}</dd>
+      <dt>Summary for RM</dt><dd class="message-body">{{ call.summary or '-' }}</dd>
+    </dl>
+  </section>
+</div>
+
+<h2>Transcript</h2>
+<div class="transcript">
+  {% for t in turns %}
+  {% set role = t.role|val %}
+  {% set meta = t.meta or {} %}
+  <div class="bubble {{ role }}{% if t.flagged %} flagged{% endif %}">
+    <span class="meta">{{ {'bot': 'Bot', 'distributor': 'Distributor', 'system': 'System'}.get(role, role) }} &middot; {{ t.created_at|local('%H:%M:%S') }}{% if meta.scripted %} &middot; scripted ({{ meta.scripted }}){% endif %}{% if meta.confidence is defined and meta.confidence is not none %} &middot; confidence {{ '%.2f'|format(meta.confidence) }}{% endif %}</span>
+    {{ t.text }}
+    {% if t.flagged %}
+    <span class="violations">Blocked by compliance screen{% if meta.violations %}: {{ meta.violations|join(', ') }}{% endif %}</span>
+    {% if meta.original %}<details><summary>Show the blocked text (not spoken)</summary>{{ meta.original }}</details>{% endif %}
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">No transcript.</p>
+  {% endfor %}
+</div>
+
+<h2>Messages sent</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>When</th><th>Channel</th><th>To</th><th>Status</th><th>Link</th></tr></thead>
+    <tbody>
+    {% for m in messages %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td class="nowrap">{{ m.created_at|local }}</td>
+        <td>{{ m.channel|label }}</td>
+        <td class="mono">{{ mask_destination(m.channel, m.destination) }}</td>
+        <td>{{ badge(m.status) }}{% if m.error %}<br><span class="small muted">{{ m.error }}</span>{% endif %}</td>
+        <td class="mono small">{{ m.link or '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No messages on this call.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if callbacks %}
+<h2>Callbacks and follow-ups</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Type</th><th>With</th><th>Notes</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for cb in callbacks %}
+      <tr><td class="nowrap">{{ cb.scheduled_for|local }}</td><td>{{ cb.kind|label }}</td><td>{{ 'RM' if cb.with_rm else 'Bot' }}</td><td class="message-body">{{ cb.notes or '' }}</td><td>{{ badge(cb.status) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2>Audit trail</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Event</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for ev in events %}
+      <tr><td class="nowrap">{{ ev.created_at|local('%H:%M:%S') }}</td><td class="mono">{{ ev.kind }}</td><td class="small">{{ detail(ev.detail) }}</td></tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">No audit events.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
