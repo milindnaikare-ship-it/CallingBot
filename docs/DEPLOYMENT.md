@@ -46,7 +46,7 @@ for local runs. Names are case-insensitive; by convention they are upper case.
 | Variable | Default | Description |
 |---|---|---|
 | `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude) or `fake` (offline rule-based demo bot, no API key). |
-| `LLM_MODEL` | `claude-opus-5-5` | Claude model id. The AMC may evaluate `claude-sonnet-5-5` for lower latency and cost; compare on real pilot transcripts. |
+| `LLM_MODEL` | `claude-sonnet-5-5` | Claude model id. `claude-opus-5-5` is the alternative for deeper reasoning at higher latency and cost. |
 | `LLM_EFFORT` | `low` | `low`, `medium`, `high`, `xhigh` or `max`. Higher means more thinking and more latency. `low` suits live voice. |
 | `LLM_MAX_TOKENS` | `4096` | Maximum output tokens per reply, including thinking. |
 | `LLM_TIMEOUT_SECONDS` | `20.0` | Timeout per API request. |
@@ -63,7 +63,7 @@ for local runs. Names are case-insensitive; by convention they are upper case.
 | `TWILIO_AUTH_TOKEN` | none | Twilio Auth Token (required for `twilio`). Also the key used to verify webhook signatures. |
 | `TWILIO_FROM_NUMBER` | none | Caller ID in E.164 (required for `twilio`). |
 | `TWILIO_VALIDATE_SIGNATURE` | `true` | Reject Twilio webhooks without a valid `X-Twilio-Signature`. Keep `true`. |
-| `TWILIO_MACHINE_DETECTION` | `true` | Answering-machine detection, so the bot can hang up on voicemail. |
+| `TWILIO_MACHINE_DETECTION` | `false` | Answering-machine detection, so the bot can hang up on voicemail. Adds a few seconds of silence after pick-up. |
 | `TWILIO_RECORD_CALLS` | `false` | Record whole calls at Twilio. Agree storage and retention with Compliance first. |
 | `EXOTEL_ACCOUNT_SID` | none | Exotel account SID (required for `exotel`). |
 | `EXOTEL_API_KEY` | none | Exotel API key (required for `exotel`). |
@@ -87,7 +87,8 @@ for local runs. Names are case-insensitive; by convention they are upper case.
 | Variable | Default | Description |
 |---|---|---|
 | `SMS_PROVIDER` | `outbox` | `outbox` (store only, for manual sending) or `twilio`. |
-| `WHATSAPP_PROVIDER` | `outbox` | `outbox` or `meta` (WhatsApp Business Cloud API, template messages). |
+| `WHATSAPP_PROVIDER` | `outbox` | `outbox`, `twilio` (Twilio WhatsApp / Sandbox, free-form text inside a 24-hour session) or `meta` (WhatsApp Business Cloud API, template messages). |
+| `TWILIO_WHATSAPP_FROM` | none | Twilio WhatsApp sender, e.g. the sandbox `whatsapp:+14155238886`. |
 | `EMAIL_PROVIDER` | `outbox` | `outbox` or `smtp`. |
 | `SMTP_HOST` | none | SMTP server. |
 | `SMTP_PORT` | `587` | SMTP port (STARTTLS submission port). |

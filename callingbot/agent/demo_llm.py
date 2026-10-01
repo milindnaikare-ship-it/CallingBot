@@ -272,16 +272,17 @@ class DemoLLM(LLMClient):
 
     def _pitch(self, view: _View) -> str:
         nfo = self.kb.nfo
-        opens, closes = self._date(view, nfo.nfo_open_date), self._date(view, nfo.nfo_close_date)
-        ended = view.now_local.date() > nfo.nfo_close_date
+        opens = self._date(view, nfo.nfo_open_date)
+        closes = self._date(view, nfo.nfo_close_date) if nfo.nfo_close_date else None
+        ended = nfo.nfo_close_date is not None and view.now_local.date() > nfo.nfo_close_date
         if _base(view.language) == "hi":
             if ended:
                 intro = f"धन्यवाद। हमारा NFO {nfo.scheme_name} बंद हो चुका है, लेकिन हम आगे की योजनाओं के लिए आपके साथ पार्टनरशिप करना चाहेंगे।"
             else:
+                period = f"यह NFO {opens} से {closes} तक खुला रहेगा" if closes else f"यह NFO {opens} को खुलेगा"
                 intro = (
                     f"धन्यवाद। मैं हमारे आने वाले NFO, {nfo.scheme_name} के बारे में कॉल कर रही हूँ, जो एक "
-                    f"{nfo.category} है। यह NFO {opens} से {closes} तक खुला रहेगा और हम इसके लिए आपके साथ "
-                    "पार्टनरशिप करना चाहेंगे।"
+                    f"{nfo.category} है। {period} और हम इसके लिए आपके साथ पार्टनरशिप करना चाहेंगे।"
                 )
             return f"{intro} {_EMPANEL_QUESTION['hi']}"
         if ended:
@@ -291,9 +292,10 @@ class DemoLLM(LLMClient):
             )
         else:
             article = "an" if nfo.category[:1].lower() in "aeiou" else "a"
+            period = f"It is open from {opens} to {closes}" if closes else f"It opens on {opens}"
             intro = (
                 f"Thank you. I'm calling about our upcoming NFO, {nfo.scheme_name}, {article} {nfo.category}. "
-                f"It is open from {opens} to {closes}, and we'd be glad to partner with you for it."
+                f"{period}, and we'd be glad to partner with you for it."
             )
         return f"{intro} {_EMPANEL_QUESTION['en']}"
 
@@ -316,16 +318,27 @@ class DemoLLM(LLMClient):
 
     def _fact(self, view: _View, key: str) -> str:
         nfo = self.kb.nfo
+        pending = "Our team will share those details with you shortly."
         facts = {
-            "managers": f"The scheme will be managed by {' and '.join(nfo.fund_managers)}.",
-            "exit_load": f"The exit load is {nfo.exit_load}.",
-            "minimum": f"The minimum investment is {nfo.min_investment}."
-            + (f" {nfo.sip_details}." if nfo.sip_details else ""),
-            "benchmark": f"The scheme's benchmark is {nfo.benchmark}.",
-            "risk": f"The scheme is rated {nfo.riskometer} on the riskometer, and returns are market linked.",
-            "dates": f"The NFO opens on {spoken_date(nfo.nfo_open_date)} and closes on "
-            f"{spoken_date(nfo.nfo_close_date)}.",
-            "about": f"{nfo.scheme_name} is {nfo.scheme_type[:1].lower()}{nfo.scheme_type[1:].strip()}",
+            "managers": f"The scheme will be managed by {' and '.join(nfo.fund_managers)}."
+            if nfo.fund_managers
+            else pending,
+            "exit_load": f"The exit load is {nfo.exit_load}." if nfo.exit_load else pending,
+            "minimum": (
+                f"The minimum investment is {nfo.min_investment}."
+                + (f" {nfo.sip_details}." if nfo.sip_details else "")
+            )
+            if nfo.min_investment
+            else pending,
+            "benchmark": f"The scheme's benchmark is {nfo.benchmark}." if nfo.benchmark else pending,
+            "risk": f"The scheme is rated {nfo.riskometer} on the riskometer, and returns are market linked."
+            if nfo.riskometer
+            else "Returns are market linked and not guaranteed.",
+            "dates": f"The NFO opens on {spoken_date(nfo.nfo_open_date)}"
+            + (f" and closes on {spoken_date(nfo.nfo_close_date)}." if nfo.nfo_close_date else "."),
+            "about": f"{nfo.scheme_name} is {nfo.scheme_type[:1].lower()}{nfo.scheme_type[1:].strip()}"
+            if nfo.scheme_type
+            else f"{nfo.scheme_name} is a {nfo.category}.",
         }
         return f"{facts[key]} {self._disclaimer(view)} {self._link_offer(view)}"
 

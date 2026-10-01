@@ -64,7 +64,7 @@ Phase 5  Optimisation                                ───►  ongoing
 **Goal:** a working, compliant, demonstrable bot that can run a small campaign end-to-end.
 
 **Included in this build**
-- Turn-based voice conversation: provider TTS/STT plus Claude (`claude-opus-5-5`, effort `low`,
+- Turn-based voice conversation: provider TTS/STT plus Claude (`claude-sonnet-5-5`, effort `low`,
   configurable), with an offline demo bot (`LLM_PROVIDER=fake`).
 - English and Hindi, with an in-call language switch; more languages through configuration.
 - Pre-approved greeting with virtual-assistant and recording disclosure; approved-knowledge-only

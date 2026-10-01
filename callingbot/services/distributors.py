@@ -1,8 +1,12 @@
-"""Distributor list import (CSV) and ARN / EUIN validation.
+"""Distributor list import (CSV or Excel .xlsx) and ARN / EUIN validation.
 
 Lists come from AMFI's "ARN holders" export or from the AMC's CRM, so the importer accepts the
-common column spellings of both (see ``_FIELD_ALIASES``), a UTF-8 byte-order mark (Excel) and
-either ``,`` or ``;`` as the delimiter (Excel in many European locales).
+common column spellings of both (see ``_FIELD_ALIASES``), a UTF-8 byte-order mark (Excel),
+``,`` / ``;`` / tab delimiters, ``.xlsx`` workbooks (first sheet, read with the standard library)
+and a header row that is not the first row (title or blank rows above it are skipped).
+
+The ARN is optional - CRM lists often lack it. Rows are matched to existing distributors by ARN
+when present, otherwise by mobile number.
 
 What the importer deliberately does *not* do:
 
@@ -13,8 +17,8 @@ What the importer deliberately does *not* do:
 * It keeps only the columns needed to call and empanel a distributor (DPDP data minimisation);
   unknown columns are ignored.
 
-Row numbers in :class:`ImportReport` are **spreadsheet row numbers**: the header is row 1, so
-the first data row is row 2. That is what an operator sees when opening the file in Excel.
+Row numbers in :class:`ImportReport` are **spreadsheet row numbers** - what an operator sees when
+opening the file in Excel (with the header on row 1, the first data row is row 2).
 """
 
 from __future__ import annotations
@@ -23,17 +27,20 @@ import csv
 import io
 import logging
 import re
+import zipfile
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import TextIO
+from typing import BinaryIO, TextIO
+from xml.etree import ElementTree
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from callingbot import compliance, funnel
 from callingbot.models import Distributor, EmpanelmentStatus
-from callingbot.phone import normalize_indian_mobile
+from callingbot.phone import mask_phone, normalize_indian_mobile
 
 log = logging.getLogger(__name__)
 
@@ -106,7 +113,14 @@ def _header_key(header: str | None) -> str:
 # Field -> accepted header spellings, in priority order (the first non-empty column wins).
 _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "arn": ("arn", "arn code", "arn no", "arn number", "amfi registration number"),
-    "name": ("name", "arn holder's name", "arn holder name", "distributor name", "contact person"),
+    "name": (
+        "name",
+        "full name",
+        "arn holder's name",
+        "arn holder name",
+        "distributor name",
+        "contact person",
+    ),
     "firm_name": ("firm", "firm name", "company", "entity name"),
     # Every valid mobile across these columns is collected in this order: the first becomes
     # ``phone`` and the next distinct one ``alt_phone``. Office before residence.
@@ -121,7 +135,7 @@ _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "alt_phone": ("alt phone", "alternate phone", "alternate mobile"),
     "email": ("email", "email id", "e-mail"),
-    "city": ("city",),
+    "city": ("city", "location"),
     "state": ("state",),
     "pincode": ("pin", "pincode", "pin code"),
     "euin": ("euin",),
@@ -171,11 +185,18 @@ def parse_language(raw: str | None) -> str | None:
     return _LANGUAGES.get((raw or "").strip().lower())
 
 
+_EXCEL_EPOCH = date(1899, 12, 30)
+_EXCEL_SERIAL_RE = re.compile(r"^\d{5}(?:\.0+)?$")
+
+
 def parse_date(raw: str | None) -> date | None:
-    """Parse the date formats seen in AMFI / CRM exports (``31-Mar-2027``, ``2027-03-31``, ``31/03/2027``)."""
+    """Parse the date formats seen in AMFI / CRM exports (``31-Mar-2027``, ``2027-03-31``, ``31/03/2027``)
+    and Excel date serials (``46477``) from .xlsx cells."""
     value = (raw or "").strip()
     if not value:
         return None
+    if _EXCEL_SERIAL_RE.match(value):
+        return _EXCEL_EPOCH + timedelta(days=int(float(value)))
     for fmt in _DATE_FORMATS:
         try:
             return datetime.strptime(value, fmt).date()
@@ -196,14 +217,105 @@ def _truncate(field_name: str, value: str | None) -> str | None:
     return value[:limit] if value and limit else value
 
 
-def _read_text(source_file: TextIO | Path | str) -> str:
-    # A ``str`` is a path (never CSV content). utf-8-sig strips the BOM Excel writes.
+_XLSX_MAGIC = b"PK\x03\x04"  # .xlsx files are zip archives
+_XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_XLSX_REL_ID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+_XLSX_MAX_PART_BYTES = 50 * 1024 * 1024  # refuse zip bombs disguised as spreadsheets
+
+
+def _read_source(source_file: TextIO | BinaryIO | Path | str) -> str | bytes:
+    """File content: ``bytes`` for an .xlsx workbook, text otherwise. A ``str`` is a path."""
     if isinstance(source_file, str | Path):
-        return Path(source_file).read_text(encoding="utf-8-sig")
-    text = source_file.read()
-    if isinstance(text, bytes):  # tolerate a binary handle (e.g. an uploaded file object)
-        text = text.decode("utf-8-sig")
-    return text.lstrip("﻿")
+        data = Path(source_file).read_bytes()
+    else:
+        data = source_file.read()
+    if isinstance(data, bytes):
+        if data.startswith(_XLSX_MAGIC):
+            return data
+        data = data.decode("utf-8-sig")  # utf-8-sig strips the BOM Excel writes
+    return data.lstrip("\ufeff")
+
+
+def _xlsx_number(value: str) -> str:
+    # Excel stores mobiles as numbers: "9769116626", sometimes "9769116626.0" or "9.769116626E9".
+    try:
+        number = Decimal(value)
+    except InvalidOperation:
+        return value
+    return str(int(number)) if number == number.to_integral_value() else value
+
+
+def _xlsx_column(ref: str) -> int:
+    index = 0
+    for ch in ref:
+        if not ch.isalpha():
+            break
+        index = index * 26 + (ord(ch.upper()) - 64)
+    return index - 1
+
+
+def _xlsx_rows(data: bytes) -> list[tuple[int, list[str]]]:
+    """``(spreadsheet row number, cell values)`` of the workbook's first sheet."""
+    with zipfile.ZipFile(io.BytesIO(data)) as book:
+
+        def part(name: str) -> ElementTree.Element:
+            if book.getinfo(name).file_size > _XLSX_MAX_PART_BYTES:
+                raise ValueError(f"{name} is too large to import")
+            return ElementTree.fromstring(book.read(name))
+
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in book.namelist():
+            shared = [
+                "".join(t.text or "" for t in si.iter(f"{_XLSX_NS}t")) for si in part("xl/sharedStrings.xml")
+            ]
+        first_sheet = part("xl/workbook.xml").find(f"{_XLSX_NS}sheets/{_XLSX_NS}sheet")
+        if first_sheet is None:
+            raise ValueError("the workbook has no sheets")
+        rels = part("xl/_rels/workbook.xml.rels")
+        target = next(r.get("Target", "") for r in rels if r.get("Id") == first_sheet.get(_XLSX_REL_ID))
+        sheet = part(target.lstrip("/") if target.startswith("/") else f"xl/{target}")
+
+        rows: list[tuple[int, list[str]]] = []
+        for row in sheet.iter(f"{_XLSX_NS}row"):
+            values: dict[int, str] = {}
+            for cell in row.iter(f"{_XLSX_NS}c"):
+                kind, raw = cell.get("t"), cell.find(f"{_XLSX_NS}v")
+                if kind == "s" and raw is not None:
+                    value = shared[int(raw.text or 0)]
+                elif kind == "inlineStr":
+                    value = "".join(t.text or "" for t in cell.iter(f"{_XLSX_NS}t"))
+                elif raw is None or raw.text is None:
+                    continue
+                elif kind in (None, "n"):
+                    value = _xlsx_number(raw.text)
+                else:
+                    value = raw.text
+                values[_xlsx_column(cell.get("r", "A"))] = value
+            if values:
+                width = max(values) + 1
+                rows.append((int(row.get("r", len(rows) + 1)), [values.get(i, "") for i in range(width)]))
+        return rows
+
+
+def _csv_rows(text: str) -> list[tuple[int, list[str]]]:
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=_detect_delimiter(text))
+    return [(reader.line_num, row) for row in reader]
+
+
+def _find_header(rows: list[tuple[int, list[str]]]) -> int:
+    """Index of the header row: the first row naming at least two known columns (else the first
+    non-empty row). Lets a sheet carry a title or blank rows above the table."""
+    known = {_header_key(alias) for aliases in _FIELD_ALIASES.values() for alias in aliases}
+    first_non_empty = None
+    for i, (_, cells) in enumerate(rows[:20]):
+        keys = {_header_key(c) for c in cells if c and c.strip()}
+        if not keys:
+            continue
+        if first_non_empty is None:
+            first_non_empty = i
+        if len(keys & known) >= 2:
+            return i
+    return first_non_empty or 0
 
 
 def _detect_delimiter(text: str) -> str:
@@ -251,19 +363,17 @@ def _valid_mobiles(row: dict, cols: list[str]) -> list[str]:
 
 
 def _parse_row(row: dict, columns: dict[str, list[str]], row_no: int, report: ImportReport):
-    """Return ``(arn, fields)`` for a valid row, or ``None`` after recording the error."""
+    """Return ``(arn, fields)`` for a valid row (``arn`` may be None), or ``None`` after recording
+    the error."""
     raw_arn = _first(row, columns["arn"])
-    if not raw_arn:
-        report.errors.append((row_no, "missing ARN"))
-        return None
-    arn = normalize_arn(raw_arn)
-    if arn is None:
+    arn = normalize_arn(raw_arn) if raw_arn else None
+    if raw_arn and arn is None:
         report.errors.append((row_no, f"invalid ARN {raw_arn[:20]!r}"))
         return None
 
     name = _first(row, columns["name"])
     if not name:
-        report.errors.append((row_no, f"{arn}: missing name"))
+        report.errors.append((row_no, f"{arn + ': ' if arn else ''}missing name"))
         return None
 
     primary = _valid_mobiles(row, columns["phone"])
@@ -271,9 +381,10 @@ def _parse_row(row: dict, columns: dict[str, list[str]], row_no: int, report: Im
     phone = primary[0] if primary else (alternates[0] if alternates else None)
     if phone is None:
         # The raw value is left out of the report on purpose (PII); the row number locates it.
-        report.errors.append((row_no, f"{arn}: no valid Indian mobile number"))
+        report.errors.append((row_no, f"{arn or name}: no valid Indian mobile number"))
         return None
     alt_phone = next((p for p in alternates + primary[1:] if p != phone), None)
+    label = arn or mask_phone(phone)  # identifies the row in warnings without exposing the number
 
     fields: dict = {
         "name": _truncate("name", name),
@@ -290,30 +401,30 @@ def _parse_row(row: dict, columns: dict[str, list[str]], row_no: int, report: Im
     else:
         fields["email"] = None
         if email:
-            report.warnings.append((row_no, f"{arn}: ignored invalid email"))
+            report.warnings.append((row_no, f"{label}: ignored invalid email"))
 
     pincode = _first(row, columns["pincode"])
     pin_digits = re.sub(r"\s", "", pincode or "")
     fields["pincode"] = pin_digits if re.fullmatch(r"[1-9]\d{5}", pin_digits) else None
     if pincode and fields["pincode"] is None:
-        report.warnings.append((row_no, f"{arn}: ignored invalid PIN code {pincode[:10]!r}"))
+        report.warnings.append((row_no, f"{label}: ignored invalid PIN code {pincode[:10]!r}"))
 
     raw_euin = _first(row, columns["euin"])
     fields["euin"] = normalize_euin(raw_euin)
     if raw_euin and fields["euin"] is None:
-        report.warnings.append((row_no, f"{arn}: ignored invalid EUIN {raw_euin[:16]!r}"))
+        report.warnings.append((row_no, f"{label}: ignored invalid EUIN {raw_euin[:16]!r}"))
 
     raw_valid_till = _first(row, columns["arn_valid_till"])
     fields["arn_valid_till"] = parse_date(raw_valid_till)
     if raw_valid_till and fields["arn_valid_till"] is None:
         report.warnings.append(
-            (row_no, f"{arn}: ignored unrecognised ARN validity date {raw_valid_till[:20]!r}")
+            (row_no, f"{label}: ignored unrecognised ARN validity date {raw_valid_till[:20]!r}")
         )
 
     raw_language = _first(row, columns["preferred_language"])
     fields["preferred_language"] = parse_language(raw_language)
     if raw_language and fields["preferred_language"] is None:
-        report.warnings.append((row_no, f"{arn}: unsupported language {raw_language[:20]!r} (left unset)"))
+        report.warnings.append((row_no, f"{label}: unsupported language {raw_language[:20]!r} (left unset)"))
     return arn, fields
 
 
@@ -331,46 +442,72 @@ def _apply_dnc(session: Session, distributor: Distributor, row_no: int, report: 
         if not already:
             report.dnc_marked += 1
             report.warnings.append(
-                (row_no, f"{distributor.arn}: {label} is on the DNC list - marked do-not-call")
+                (
+                    row_no,
+                    f"{distributor.arn or mask_phone(distributor.phone)}: {label} is on the DNC list - marked do-not-call",
+                )
             )
         return
 
 
+def _find_existing(session: Session, arn: str | None, phone: str) -> Distributor | None:
+    if arn:
+        found = session.scalar(select(Distributor).where(Distributor.arn == arn))
+        if found is not None:
+            return found
+        # A row that now carries an ARN may match an earlier ARN-less import of the same mobile.
+        return session.scalar(
+            select(Distributor).where(Distributor.arn.is_(None), Distributor.phone == phone)
+        )
+    return session.scalar(select(Distributor).where(Distributor.phone == phone).order_by(Distributor.id))
+
+
 def import_distributors_csv(
-    session: Session, source_file: TextIO | Path | str, *, source: str, update_existing: bool = True
+    session: Session,
+    source_file: TextIO | BinaryIO | Path | str,
+    *,
+    source: str,
+    update_existing: bool = True,
 ) -> ImportReport:
-    """Import distributors from a CSV file (path, or an open text handle).
+    """Import distributors from a CSV or .xlsx file (a path, or an open text / binary handle).
 
-    Each row needs a valid ARN, a name and a valid Indian mobile number; other rows are reported
-    in ``errors`` and skipped. A repeated ARN within the file is an error on the later row. An
-    ARN already in the database is updated with the row's non-empty values when
-    ``update_existing`` (``status``, ``do_not_call`` and ``notes`` are never touched), otherwise
-    skipped. A row whose phone is on the internal DNC list is imported but marked do-not-call.
+    Each row needs a name and a valid Indian mobile number; the ARN is optional but must be valid
+    when present. Invalid rows are reported in ``errors`` and skipped. A repeated ARN (or, for rows
+    without an ARN, a repeated mobile) within the file is an error on the later row. A distributor
+    already in the database - matched by ARN, else by mobile - is updated with the row's non-empty
+    values when ``update_existing`` (``status``, ``do_not_call`` and ``notes`` are never touched),
+    otherwise skipped. A row whose phone is on the internal DNC list is imported but marked
+    do-not-call.
 
-    Flushes; the caller commits. Raises ``OSError`` / ``UnicodeDecodeError`` / ``csv.Error`` for a
-    file that cannot be read as UTF-8 CSV.
+    Flushes; the caller commits. Raises ``OSError`` / ``UnicodeDecodeError`` / ``csv.Error`` /
+    ``ValueError`` / ``zipfile.BadZipFile`` for a file that cannot be read.
     """
     report = ImportReport()
-    text = _read_text(source_file)
-    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=_detect_delimiter(text))
-    columns = _column_map(reader.fieldnames)
+    content = _read_source(source_file)
+    rows = _xlsx_rows(content) if isinstance(content, bytes) else _csv_rows(content)
+    header_index = _find_header(rows)
+    header = rows[header_index][1] if rows else []
+    fieldnames = [h if h.strip() else f"__column{i}" for i, h in enumerate(header)]
+    columns = _column_map(fieldnames)
     source = _truncate("source", (source or "").strip() or None) or "csv"
 
     seen: dict[str, int] = {}
-    for index, row in enumerate(reader):
-        row_no = index + 2  # header is row 1
-        if not any(_clean(v) for k, v in row.items() if k is not None and isinstance(v, str)):
+    for row_no, cells in rows[header_index + 1 :]:
+        row = dict(zip(fieldnames, cells, strict=False))
+        if not any(_clean(v) for v in row.values() if isinstance(v, str)):
             continue  # blank line or a row of empty cells (Excel leaves these at the end)
         parsed = _parse_row(row, columns, row_no, report)
         if parsed is None:
             continue
         arn, fields = parsed
-        if arn in seen:
-            report.errors.append((row_no, f"duplicate ARN {arn} (first seen in row {seen[arn]})"))
+        key = arn or fields["phone"]
+        if key in seen:
+            what = f"ARN {arn}" if arn else f"mobile {mask_phone(fields['phone'])}"
+            report.errors.append((row_no, f"duplicate {what} (first seen in row {seen[key]})"))
             continue
-        seen[arn] = row_no
+        seen[key] = row_no
 
-        existing = session.scalar(select(Distributor).where(Distributor.arn == arn))
+        existing = _find_existing(session, arn, fields["phone"])
         if existing is None:
             distributor = Distributor(
                 arn=arn,
@@ -388,6 +525,9 @@ def import_distributors_csv(
         else:
             distributor = existing
             changed = False
+            if arn and distributor.arn is None:
+                distributor.arn = arn
+                changed = True
             for name in _DATA_FIELDS:
                 value = fields.get(name)
                 if value not in (None, "") and getattr(distributor, name) != value:

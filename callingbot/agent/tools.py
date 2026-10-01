@@ -39,6 +39,7 @@ from callingbot.models import (
     CallOutcome,
     Distributor,
     EmpanelmentStatus,
+    FollowUpKind,
     InterestLevel,
     MessageChannel,
     MessageStatus,
@@ -66,6 +67,14 @@ OUTCOME_CHOICES = (
     "no_outcome",
 )
 INTEREST_CHOICES = ("hot", "warm", "cold")
+REQUEST_KINDS = (
+    FollowUpKind.RM_REQUEST.value,
+    FollowUpKind.COMMISSION_QUERY.value,
+    FollowUpKind.COLLATERAL_REQUEST.value,
+    FollowUpKind.EMAIL_ISSUE.value,
+    FollowUpKind.EMPANELMENT_HELP.value,
+    FollowUpKind.OTHER.value,
+)
 CHANNEL_CHOICES = ("sms", "whatsapp", "email")
 
 # Outcomes set by an action that has already happened on the call; nothing the model records
@@ -241,6 +250,24 @@ def build_tool_definitions(kb: KnowledgeBase | None = None) -> list[dict[str, An
             apologise and confirm in one sentence that they will not be called again. Not for "call me
             later" - use schedule_callback for that.""",
             {"reason": {"type": "string", "description": "The person's request in a few words."}},
+        ),
+        _tool(
+            "log_request",
+            """Note a request for our team to follow up on, when the distributor asks for something that
+            has no fixed time: a relationship manager (rm_request), the commission or brokerage structure
+            (commission_query), single pagers, presentations or other marketing collateral
+            (collateral_request), an empanelment email they have not received (email_issue), help with
+            the empanelment form (empanelment_help), or anything else the team must handle (other). In
+            the same response, give the matching approved response to the distributor. For a call back
+            at a specific time use schedule_callback instead.""",
+            {
+                "kind": {"type": "string", "enum": list(REQUEST_KINDS)},
+                "details": {
+                    "type": "string",
+                    "description": "What the team should do, in one or two factual sentences. No phone "
+                    "numbers or email addresses.",
+                },
+            },
         ),
         _tool(
             "record_outcome",
@@ -639,7 +666,11 @@ def _schedule_callback(ctx: ToolContext, inp: dict[str, Any]) -> ToolOutcome:
     notes = _clean(inp["notes"])
     # A second booking on the same call is a reschedule, not an extra callback.
     existing = ctx.session.scalar(
-        select(Callback).where(Callback.call_id == call.id, Callback.status == CallbackStatus.PENDING)
+        select(Callback).where(
+            Callback.call_id == call.id,
+            Callback.kind == FollowUpKind.CALLBACK,
+            Callback.status == CallbackStatus.PENDING,
+        )
     )
     if existing is not None:
         existing.scheduled_for, existing.with_rm, existing.notes = when_utc, with_rm, notes
@@ -664,6 +695,46 @@ def _schedule_callback(ctx: ToolContext, inp: dict[str, Any]) -> ToolOutcome:
         rescheduled=existing is not None,
     )
     return _ok(scheduled=True, when_spoken=spoken_datetime(to_local(when_utc, tz)), with_rm=with_rm)
+
+
+def _log_request(ctx: ToolContext, inp: dict[str, Any]) -> ToolOutcome:
+    call, d = ctx.call, ctx.distributor
+    kind = FollowUpKind(inp["kind"])
+    details = _clean(inp["details"])
+    # One open request per kind per call: repeating the same ask just refreshes the note.
+    existing = ctx.session.scalar(
+        select(Callback).where(
+            Callback.call_id == call.id, Callback.kind == kind, Callback.status == CallbackStatus.PENDING
+        )
+    )
+    if existing is not None:
+        existing.notes = details
+        request = existing
+    else:
+        request = Callback(
+            distributor_id=d.id,
+            call_id=call.id,
+            kind=kind,
+            scheduled_for=ctx.now_utc,  # handle as soon as possible
+            with_rm=True,
+            notes=details,
+        )
+        ctx.session.add(request)
+    ctx.session.flush()
+    # A follow-up request signals interest, but must not overwrite a clearer disposition
+    # (e.g. already_empanelled partners asking for collateral).
+    if call.outcome in (None, CallOutcome.NO_OUTCOME):
+        call.outcome = CallOutcome.INTERESTED
+    funnel.advance_status(d, EmpanelmentStatus.INTERESTED)
+    audit(
+        ctx.session,
+        "request_logged",
+        call_id=call.id,
+        distributor_id=d.id,
+        request_kind=kind.value,
+        request_id=request.id,
+    )
+    return _ok(logged=True, kind=kind.value, handled_by=ctx.kb.amc.rm_team_description)
 
 
 def _set_language(ctx: ToolContext, inp: dict[str, Any]) -> ToolOutcome:
@@ -768,6 +839,7 @@ _HANDLERS = {
     "schedule_callback": _schedule_callback,
     "set_language": _set_language,
     "transfer_to_human": _transfer,
+    "log_request": _log_request,
     "opt_out": _opt_out,
     "record_outcome": _record_outcome,
     "end_call": _end_call,

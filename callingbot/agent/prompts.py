@@ -98,16 +98,28 @@ def _as_local(now_local: datetime) -> datetime:
 # ---------------------------------------------------------------------------------------------
 
 
-def render_greeting(kb: KnowledgeBase, language: str | None, distributor: Distributor) -> str:
+def time_of_day(local: datetime | None) -> str:
+    """ "morning" / "afternoon" / "evening" for a local time, as used in "Good morning"."""
+    if local is None:
+        return "day"
+    if local.hour < 12:
+        return "morning"
+    return "afternoon" if local.hour < 17 else "evening"
+
+
+def render_greeting(
+    kb: KnowledgeBase, language: str | None, distributor: Distributor, now_local: datetime | None = None
+) -> str:
     """The pre-approved opening line for ``language`` (no LLM involved).
 
-    Placeholders are filled with ``str.replace`` so a stray brace in an approved script cannot
-    crash the answer webhook.
+    Placeholders ({time_of_day}, {bot_name}, {amc_name}, {name}) are filled with ``str.replace`` so a
+    stray brace in an approved script cannot crash the answer webhook.
     """
     template = kb.amc.language(language).greeting or FALLBACK_GREETING
     name = (distributor.name or "").strip() or "the distributor"
     text = (
-        template.replace("{bot_name}", kb.amc.bot_name)
+        template.replace("{time_of_day}", time_of_day(_as_local(now_local) if now_local else None))
+        .replace("{bot_name}", kb.amc.bot_name)
         .replace("{amc_name}", kb.amc.name)
         .replace("{name}", name)
     )
@@ -134,28 +146,70 @@ are a person, a recording or an AI, say honestly that you are a virtual assistan
 {amc.name}."""
 
 
+def _nfo_period(nfo) -> str:
+    if nfo.nfo_close_date:
+        return f"whose NFO period runs from {spoken_date(nfo.nfo_open_date)} to {spoken_date(nfo.nfo_close_date, year=True)}"
+    return f"which opens on {spoken_date(nfo.nfo_open_date, year=True)}"
+
+
 def _purpose(kb: KnowledgeBase) -> str:
     amc, nfo = kb.amc, kb.nfo
     return f"""\
 ## Purpose of the call
 
 You have two goals. First, make the distributor aware of our upcoming New Fund Offer, {nfo.scheme_name} \
-({nfo.category}), whose NFO period runs from {spoken_date(nfo.nfo_open_date)} to \
-{spoken_date(nfo.nfo_close_date, year=True)}. Second, invite them to partner with {amc.short_name} by \
-getting empanelled, so they can offer this scheme and our other schemes to their clients. A good call is \
-short and ends with the empanelment link sent or a conversation with a relationship manager scheduled. \
-Never pressure anyone: a polite "not now" is a perfectly good outcome."""
+({nfo.category}), {_nfo_period(nfo)}. Second, invite them to partner with {amc.short_name} by getting \
+empanelled, so they can offer this scheme and our other schemes to their clients. A good call is short \
+and ends with the partner empanelled or on their way to it (link shared, or help from our team \
+arranged). Never pressure anyone: a polite "not now" is a perfectly good outcome."""
+
+
+def _script_flow(kb: KnowledgeBase) -> str:
+    def render(step) -> str:
+        lines = [f"[{step.id}] When: {' '.join(step.when.split())}", f'Say: "{" ".join(step.say.split())}"']
+        if step.next:
+            lines.append(f"Then: {' '.join(step.next.split())}")
+        return "\n".join(lines)
+
+    steps = "\n\n".join(render(s) for s in kb.script.steps)
+    responses = "\n\n".join(render(s) for s in kb.script.standard_responses) or "(none)"
+    return f"""\
+## How the call flows
+
+The platform has already played the approved greeting, quoted in the call context, which asked whether \
+you are speaking with the partner. The first user message is that call context block from the platform, \
+not something the distributor said; every later user message is what the distributor said.
+
+Follow the approved call script below. It is written by {kb.amc.name} and approved by its Compliance team, \
+so keep to its wording: you may split a step into shorter spoken pieces and smooth the joins, but do not \
+add claims, drop qualifiers or change any figure. Move between steps according to what the distributor \
+says; skip steps they have already answered, and go straight to empanelment if they ask for it. Long \
+steps such as the overview must be delivered in pieces of two to four sentences, checking after each \
+piece that they are still with you or want to continue. The standard responses apply at any point in \
+the call. Answer other questions from the approved knowledge further below.
+
+### Call script steps
+
+{steps}
+
+### Standard responses
+
+{responses}
+
+To close, thank them, speak the mandatory disclaimer if you discussed the scheme and have not said it \
+yet, call record_outcome, and call end_call in the same response as your goodbye."""
 
 
 def _flow(kb: KnowledgeBase) -> str:
+    if kb.script.steps:
+        return _script_flow(kb)
     short = kb.amc.short_name
     return f"""\
 ## How the call flows
 
-The platform has already played the greeting: it introduced you as a virtual assistant, said the call \
-may be recorded and asked whether you are speaking with the distributor. The first user message is a \
-call context block from the platform, not something the distributor said; every later user message is \
-what the distributor said.
+The platform has already played the greeting: it introduced you as a virtual assistant and asked \
+whether you are speaking with the distributor. The first user message is a call context block from the \
+platform, not something the distributor said; every later user message is what the distributor said.
 
 Start by making sure you are speaking with the right person. Once they confirm, explain the reason for \
 the call in one or two sentences: the upcoming NFO and an invitation to partner with us. Then ask \
@@ -176,17 +230,21 @@ yet, call record_outcome, and call end_call in the same response as your goodbye
 
 
 def _speaking_style(kb: KnowledgeBase) -> str:
-    return """\
+    email = ""
+    if kb.amc.distributor_email_spoken:
+        email = f' The partner desk email address may be spoken only in this form: "{kb.amc.distributor_email_spoken}".'
+    return f"""\
 ## Speaking style
 
-Everything you write is converted to speech and played on a phone line. Keep each turn to one or two \
-short sentences, ideally under 35 words, and ask one question at a time. Write plain spoken sentences: \
-no lists, headings, markdown, emojis, symbols or URLs. Say dates naturally, such as "20th October", and \
-amounts the way people say them, such as "five thousand rupees". Never read out web links, email \
-addresses or reference numbers character by character; offer to send the details by SMS, WhatsApp or \
-email instead. The one number you may read out, slowly and only if asked, is the distributor helpline. \
-If the transcript is garbled, cut off or ambiguous, briefly ask them to repeat instead of guessing. Do \
-not narrate what you are doing behind the scenes."""
+Everything you write is converted to speech and played on a phone line. Keep each turn short: one or \
+two sentences, ideally under 35 words, except when delivering an approved script step, which you split \
+into pieces of two to four sentences. Ask one question at a time. Write plain spoken sentences: no lists, \
+headings, markdown, emojis, symbols or URLs. Say dates naturally, such as "20th October", and amounts \
+the way people say them, such as "five thousand rupees". Never read out web links or reference numbers \
+character by character; offer to send the details by SMS, WhatsApp or email instead.{email} The one \
+number you may read out, slowly and only if asked, is the distributor helpline. If the transcript is \
+garbled, cut off or ambiguous, briefly ask them to repeat instead of guessing. Do not narrate what you \
+are doing behind the scenes."""
 
 
 def _language(kb: KnowledgeBase) -> str:
@@ -222,8 +280,12 @@ manager will confirm it and offer a callback.
 
 Returns and risk. Never promise, project or imply returns, and never describe the scheme as \
 guaranteed, assured, safe, secure or risk-free. This is a new scheme with no performance history, so \
-never cite past or expected performance, and never compare it with other funds, AMCs or indices. If \
-asked about returns, say they are market linked and not guaranteed, and mention the riskometer level.
+never cite past or expected performance, and never compare it with other funds, AMCs or indices. The \
+only exception is a performance or market statistic that appears in the approved call script: you may \
+repeat it exactly as written, together with the qualifiers around it, including "Past performance may or \
+may not be sustained in future." Never round, recompute, extend or apply such figures to the scheme. If \
+asked about returns, say they are market linked and not guaranteed, and mention the riskometer level if \
+it is listed in the approved knowledge.
 
 Advice. You do not give investment advice or recommendations: the distributor advises their clients, \
 and you only share approved facts. Never tell anyone to invest, buy, switch or redeem, and never call a \
@@ -288,7 +350,9 @@ language, an alternate mobile number or a note for their relationship manager. U
 send_empanelment_link only after they agree to receive the link; SMS and WhatsApp go to the number you \
 are calling and email goes to the address they give or the one on file, so you never need to ask for \
 or repeat their number. Use schedule_callback for a call back at a time they choose, with the local \
-date and time in the YYYY-MM-DD HH:MM format shown in the call context. Use set_language when switching \
+date and time in the YYYY-MM-DD HH:MM format shown in the call context. Use log_request when they ask for \
+something our team must follow up on without a fixed time: a relationship manager, the commission \
+structure, marketing collateral, a missing empanelment email, or help with the empanelment form. Use set_language when switching \
 language, transfer_to_human when they want a person right now, and opt_out the moment they ask not to \
 be called again.
 
@@ -317,11 +381,19 @@ def _knowledge(kb: KnowledgeBase) -> str:
     ]
     if amc.sebi_registration:
         lines.append(f"SEBI registration number: {amc.sebi_registration}")
-    lines.append(f"Website: {amc.website} (never read the address aloud; offer to send it)")
+    if amc.website:
+        lines.append(f"Website: {amc.website} (never read the address aloud; offer to send it)")
     if amc.distributor_helpline:
         lines.append(f"Distributor helpline: {amc.distributor_helpline}")
     if amc.distributor_email:
-        lines.append(f"Partner desk email: {amc.distributor_email} (never spell it out; offer to send it)")
+        if amc.distributor_email_spoken:
+            lines.append(
+                f'Partner desk email: {amc.distributor_email} (say it as "{amc.distributor_email_spoken}")'
+            )
+        else:
+            lines.append(
+                f"Partner desk email: {amc.distributor_email} (never spell it out; offer to send it)"
+            )
     lines += [
         f"Relationship managers: {amc.rm_team_description}",
         "Approved reasons to partner with us:",
@@ -335,23 +407,37 @@ def _knowledge(kb: KnowledgeBase) -> str:
         "### The NFO",
         f"Scheme name: {nfo.scheme_name}",
         f"SEBI category: {nfo.category}",
-        f"Scheme type: {' '.join(nfo.scheme_type.split())}",
-        f"Investment objective: {' '.join(nfo.investment_objective.split())}",
-        f"Benchmark: {nfo.benchmark}",
-        f"Fund managers: {', '.join(nfo.fund_managers)}",
-        f"NFO opens: {spoken_date(nfo.nfo_open_date, weekday=True, year=True)}",
-        f"NFO closes: {spoken_date(nfo.nfo_close_date, weekday=True, year=True)}",
     ]
+    for label, value in (
+        ("Scheme type", nfo.scheme_type),
+        ("Investment objective", nfo.investment_objective),
+        ("Benchmark", nfo.benchmark),
+        ("Fund managers", ", ".join(nfo.fund_managers)),
+    ):
+        if value:
+            lines.append(f"{label}: {' '.join(value.split())}")
+    lines.append(f"NFO opens: {spoken_date(nfo.nfo_open_date, weekday=True, year=True)}")
+    if nfo.nfo_close_date:
+        lines.append(f"NFO closes: {spoken_date(nfo.nfo_close_date, weekday=True, year=True)}")
     if nfo.allotment_or_reopen_note:
         lines.append(f"After the NFO: {' '.join(nfo.allotment_or_reopen_note.split())}")
-    lines.append(f"Minimum investment: {nfo.min_investment}")
+    if nfo.min_investment:
+        lines.append(f"Minimum investment: {nfo.min_investment}")
     if nfo.sip_details:
         lines.append(f"SIP: {nfo.sip_details}")
+    if nfo.plans_and_options:
+        lines += ["Plans and options:", _bullets(nfo.plans_and_options)]
+    if nfo.exit_load:
+        lines.append(f"Exit load: {nfo.exit_load}")
+    if nfo.riskometer:
+        lines.append(f"Riskometer: {nfo.riskometer}")
+    pending = nfo.pending_fields()
+    if pending:
+        lines.append(
+            f"Not yet available: {', '.join(pending)}. If asked about any of these, say our team will share "
+            "those details with them, and offer to note the request (log_request) - never guess."
+        )
     lines += [
-        "Plans and options:",
-        _bullets(nfo.plans_and_options),
-        f"Exit load: {nfo.exit_load}",
-        f"Riskometer: {nfo.riskometer}",
         "Key highlights (approved talking points):",
         _bullets(nfo.key_highlights),
         "Support for distributors:",
@@ -411,6 +497,14 @@ def nfo_phase(kb: KnowledgeBase, today: date) -> str:
     """One sentence on where we are relative to the NFO period."""
     nfo = kb.nfo
     opens = spoken_date(nfo.nfo_open_date, weekday=True, year=True)
+    if nfo.nfo_close_date is None:
+        if today < nfo.nfo_open_date:
+            days = (nfo.nfo_open_date - today).days
+            when = "tomorrow" if days == 1 else f"in {days} days"
+            return f"The NFO opens {when}, on {opens}; the closing date is not yet available."
+        if today == nfo.nfo_open_date:
+            return "The NFO opens today; the closing date is not yet available."
+        return f"The NFO opened on {opens}; the closing date is not yet available."
     closes = spoken_date(nfo.nfo_close_date, weekday=True, year=True)
     if today < nfo.nfo_open_date:
         days = (nfo.nfo_open_date - today).days
@@ -489,7 +583,7 @@ def build_call_context(kb: KnowledgeBase, distributor: Distributor, call: Call, 
         *prior_text,
         f"Call language: {lang.name} ({lang.code}).",
         "The greeting below has already been spoken to the distributor:",
-        f'"{render_greeting(kb, lang.code, distributor)}"',
+        f'"{render_greeting(kb, lang.code, distributor, now_local)}"',
         "The next user message is the distributor's reply to that greeting.",
     ]
     return "\n".join(lines)

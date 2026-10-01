@@ -14,6 +14,9 @@ from callingbot.models import Distributor, EmpanelmentStatus
 from callingbot.settings import Settings
 
 ROOT = Path(__file__).resolve().parent.parent
+# Tests run against a stable, generic sample knowledge base (two languages, every NFO field filled in),
+# independent of the AMC's real content in config/. tests/test_amc_config.py validates config/ itself.
+FIXTURE_CONFIG = ROOT / "tests" / "fixtures" / "config"
 
 # 2026-10-13 is a Tuesday. 05:30 UTC == 11:00 IST, inside the default 10:00-19:00 window.
 IN_WINDOW_UTC = datetime(2026, 10, 13, 5, 30)
@@ -25,7 +28,7 @@ def settings() -> Settings:
         _env_file=None,
         app_env="test",
         database_url="sqlite://",
-        config_dir=ROOT / "config",
+        config_dir=FIXTURE_CONFIG,
         llm_provider="fake",
         telephony_provider="simulator",
         public_base_url="https://bot.example.test",
@@ -40,7 +43,7 @@ def settings() -> Settings:
 
 @pytest.fixture
 def kb():
-    return load_knowledge(ROOT / "config")
+    return load_knowledge(FIXTURE_CONFIG)
 
 
 @pytest.fixture

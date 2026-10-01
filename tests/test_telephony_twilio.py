@@ -77,7 +77,7 @@ def test_place_call_request_shape(settings):
     assert form["StatusCallback"] == "https://bot.example.test/telephony/twilio/status/42"
     assert form["StatusCallbackMethod"] == "POST"
     assert form["Timeout"] == "30"
-    assert form["MachineDetection"] == "Enable"  # default setting
+    assert "MachineDetection" not in form  # answering-machine detection is off by default
     assert "Record" not in form  # recording is off by default
     # The key must repeat, once per event, in order.
     assert [v for k, v in pairs if k == "StatusCallbackEvent"] == [
@@ -88,14 +88,14 @@ def test_place_call_request_shape(settings):
     ]
 
 
-def test_place_call_record_on_and_machine_detection_off(settings):
-    provider, rec = make_provider(settings, twilio_record_calls=True, twilio_machine_detection=False)
+def test_place_call_record_on_and_machine_detection_on(settings):
+    provider, rec = make_provider(settings, twilio_record_calls=True, twilio_machine_detection=True)
 
     provider.place_call(to_number="+919812345678", call_id=1)
 
     form = dict(form_pairs(rec.requests[0]))
     assert form["Record"] == "true"
-    assert "MachineDetection" not in form
+    assert form["MachineDetection"] == "Enable"
 
 
 def test_place_call_unexpected_status_defaults_to_initiated(settings):

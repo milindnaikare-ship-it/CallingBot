@@ -8,7 +8,8 @@
     callingbot campaign create NAME [--description TEXT]
     callingbot campaign add NAME | start NAME | pause NAME | list
     callingbot run-dialer --campaign NAME [--once] [--interval SECONDS]
-    callingbot simulate [--arn ARN] [--language CODE]
+    callingbot simulate [--arn ARN | --phone NUMBER] [--language CODE]
+    callingbot test-call (--phone NUMBER | --arn ARN) [--ignore-window] [--language CODE]
     callingbot serve [--host HOST] [--port PORT] [--reload]
     callingbot stats [--campaign NAME]
     callingbot export-leads PATH [--campaign NAME]
@@ -31,6 +32,7 @@ import logging
 import os
 import sys
 import time
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -57,7 +59,7 @@ from callingbot.models import (
     EmpanelmentStatus,
     OutboundMessage,
 )
-from callingbot.phone import mask_phone
+from callingbot.phone import mask_phone, normalize_indian_mobile
 from callingbot.services.dialer import add_distributors_to_campaign, dial_due_contacts, reap_stale_calls
 from callingbot.services.distributors import import_distributors_csv, normalize_arn
 from callingbot.services.lifecycle import apply_status_update, create_call
@@ -282,8 +284,8 @@ def cmd_import_distributors(args: argparse.Namespace, settings: Settings) -> int
             report = import_distributors_csv(
                 session, path, source=args.source or path.name, update_existing=not args.no_update
             )
-        except (UnicodeDecodeError, csv.Error) as exc:
-            raise CLIError(f"could not read {path} as a UTF-8 CSV file: {exc}") from exc
+        except (UnicodeDecodeError, csv.Error, ValueError, zipfile.BadZipFile) as exc:
+            raise CLIError(f"could not read {path} as a UTF-8 CSV or .xlsx file: {exc}") from exc
         print(
             f"Imported {path.name}: {report.created} created, {report.updated} updated, "
             f"{report.skipped} skipped, {len(report.errors)} error(s), {report.dnc_marked} marked do-not-call"
@@ -479,17 +481,31 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
     codes = [lang.code for lang in kb.amc.languages]
     if args.language and args.language not in codes:
         raise CLIError(f"language {args.language!r} is not enabled; choose one of: {', '.join(codes)}")
-    arn = None
+    arn = phone = None
     if args.arn:
         arn = normalize_arn(args.arn)
         if arn is None:
             raise CLIError(f"invalid ARN {args.arn!r}")
+    if getattr(args, "phone", None):
+        phone = normalize_indian_mobile(args.phone)
+        if phone is None:
+            raise CLIError(f"{args.phone!r} is not a valid Indian mobile number")
     _open_db(settings)
-    if arn is not None:
+
+    def chosen(session: Session):
+        if arn is not None:
+            return session.scalar(select(Distributor).where(Distributor.arn == arn))
+        if phone is not None:
+            return session.scalar(
+                select(Distributor).where(Distributor.phone == phone).order_by(Distributor.id)
+            )
+        return None
+
+    if arn is not None or phone is not None:
         with db.session_scope() as session:
-            if session.scalar(select(Distributor.id).where(Distributor.arn == arn)) is None:
+            if chosen(session) is None:
                 raise CLIError(
-                    f"no distributor with ARN {arn}; import one or omit --arn to use the demo distributor"
+                    "no matching distributor; import one, or omit --arn/--phone to use the demo distributor"
                 )
 
     try:
@@ -506,9 +522,8 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
         raise CLIError(f"could not start the conversation engine: {exc}") from exc
 
     with db.session_scope() as session:
-        if arn is not None:
-            distributor = session.scalar(select(Distributor).where(Distributor.arn == arn))
-        else:
+        distributor = chosen(session)
+        if distributor is None:
             distributor = _demo_distributor(session)
             # The demo distributor is synthetic: it simply prefers whatever language was asked for.
             distributor.preferred_language = args.language
@@ -522,7 +537,8 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
         )
         session.commit()
         print(
-            f"Simulated call #{call.id} to {distributor.name} ({distributor.arn}) in {call.language}. "
+            f"Simulated call #{call.id} to {distributor.name} ({distributor.arn or mask_phone(distributor.phone)}) "
+            f"in {call.language}. "
             "Press Enter to stay silent, type /quit to hang up."
         )
 
@@ -578,7 +594,7 @@ def _print_call_summary(session: Session, call: Call, distributor: Distributor) 
     )
     print(f"Outcome: {call.outcome.value if call.outcome else '-'}")
     print(
-        f"Distributor: {distributor.name} ({distributor.arn}) - status {EmpanelmentStatus(distributor.status).value}"
+        f"Distributor: {distributor.name} ({distributor.arn or mask_phone(distributor.phone)}) - status {EmpanelmentStatus(distributor.status).value}"
     )
     if call.summary:
         print(f"Notes: {call.summary}")
@@ -599,6 +615,97 @@ def _print_call_summary(session: Session, call: Call, distributor: Distributor) 
     for cb in callbacks:
         who = "RM" if cb.with_rm else "bot"
         print(f"Callback ({who}) scheduled for {cb.scheduled_for:%Y-%m-%d %H:%M} UTC")
+
+
+def cmd_test_call(args: argparse.Namespace, settings: Settings) -> int:
+    """Phone one imported distributor right now, outside any campaign - for closed POC testing."""
+    from callingbot import compliance
+    from callingbot.models import audit
+    from callingbot.telephony import TelephonyError, get_provider
+
+    if settings.telephony_provider == "simulator":
+        raise CLIError(
+            "test-call places a real phone call, but TELEPHONY_PROVIDER=simulator. Set TELEPHONY_PROVIDER=twilio "
+            "(see docs/TWILIO_SETUP.md), or talk to the bot without a phone via 'callingbot simulate'."
+        )
+    host = urlsplit(settings.public_base_url).hostname or ""
+    if host in ("localhost", "127.0.0.1", "0.0.0.0") or not settings.public_base_url.startswith("https://"):
+        raise CLIError(
+            f"PUBLIC_BASE_URL is {settings.public_base_url!r}; the telephony provider cannot reach it. Start "
+            "ngrok ('ngrok http 8000') and set PUBLIC_BASE_URL to its https URL, then restart 'callingbot serve'."
+        )
+    kb = _load_kb(settings)
+    _open_db(settings)
+    try:
+        provider = get_provider(settings.telephony_provider, settings)
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+
+    with db.session_scope() as session:
+        if args.arn:
+            arn = normalize_arn(args.arn)
+            if arn is None:
+                raise CLIError(f"invalid ARN {args.arn!r}")
+            distributor = session.scalar(select(Distributor).where(Distributor.arn == arn))
+        else:
+            phone = normalize_indian_mobile(args.phone)
+            if phone is None:
+                raise CLIError(f"{args.phone!r} is not a valid Indian mobile number")
+            distributor = session.scalar(
+                select(Distributor).where(Distributor.phone == phone).order_by(Distributor.id)
+            )
+        if distributor is None:
+            raise CLIError(
+                "no imported distributor matches; import them first with 'callingbot import-distributors'"
+            )
+        if distributor.do_not_call or compliance.is_dnc(session, distributor.phone):
+            raise CLIError(f"{distributor.name} is on the do-not-call list; not calling.")
+
+        now = utcnow()
+        window = compliance.check_calling_window(kb.campaign, now, settings.timezone)
+        if not window.allowed and not args.ignore_window:
+            nxt = _local(window.next_allowed_utc, settings) if window.next_allowed_utc else "unknown"
+            raise CLIError(
+                f"outside the calling window ({window.reason}); the next window opens {nxt} IST. "
+                "For a call to your own test phone, add --ignore-window."
+            )
+
+        call = create_call(session, distributor=distributor, provider=provider.name, language=args.language)
+        audit(
+            session,
+            "test_call",
+            call_id=call.id,
+            distributor_id=distributor.id,
+            ignore_window=bool(args.ignore_window and not window.allowed),
+        )
+        session.commit()  # the answer webhook can arrive within seconds and must find the row
+        try:
+            result = provider.place_call(to_number=distributor.phone, call_id=call.id)
+        except TelephonyError as exc:
+            apply_status_update(
+                session,
+                call,
+                CallStatusUpdate(provider_call_id=None, status=CallStatus.FAILED),
+                kb=kb,
+                now_utc=utcnow(),
+            )
+            call.error = str(exc)
+            session.commit()  # keep the failure on record; session_scope rolls back on exceptions
+            raise CLIError(f"the provider rejected the call: {exc}") from exc
+        call.provider_call_id = result.provider_call_id
+        call.status = result.status
+        print(
+            f"Calling {distributor.name} on {mask_phone(distributor.phone)} - call #{call.id} "
+            f"({provider.name} id {result.provider_call_id})."
+        )
+        print(
+            "Answer the phone. On a Twilio trial account, press any key after Twilio's announcement and the "
+            "bot will greet you."
+        )
+        print(
+            f"Transcript and outcome: http://localhost:8000/calls/{call.id} (dashboard of 'callingbot serve')."
+        )
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace, settings: Settings) -> int:
@@ -700,8 +807,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check-config", help="validate settings and config/*.yaml")
     p.set_defaults(func=cmd_check_config)
 
-    p = sub.add_parser("import-distributors", help="import a distributor CSV")
-    p.add_argument("path", help="CSV file (AMFI export or CRM list)")
+    p = sub.add_parser("import-distributors", help="import a distributor list (CSV or .xlsx)")
+    p.add_argument("path", help="CSV or Excel .xlsx file (AMFI export or CRM list)")
     p.add_argument("--source", help="label for where the list came from (default: the file name)")
     p.add_argument(
         "--campaign", help="also add the imported distributors to this campaign (created if missing)"
@@ -733,9 +840,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_run_dialer)
 
     p = sub.add_parser("simulate", help="talk to the bot in the terminal")
-    p.add_argument("--arn", help="play this distributor (default: a demo distributor)")
+    who = p.add_mutually_exclusive_group()
+    who.add_argument("--arn", help="play this distributor (default: a demo distributor)")
+    who.add_argument("--phone", help="play the imported distributor with this mobile number")
     p.add_argument("--language", help="language code, e.g. en-IN or hi-IN")
     p.set_defaults(func=cmd_simulate)
+
+    p = sub.add_parser("test-call", help="phone one imported distributor now (closed POC testing)")
+    target = p.add_mutually_exclusive_group(required=True)
+    target.add_argument("--phone", help="mobile number of an imported distributor, e.g. +919876543210")
+    target.add_argument("--arn", help="ARN of an imported distributor")
+    p.add_argument(
+        "--ignore-window",
+        action="store_true",
+        help="call even outside the calling window - only for your own test phone",
+    )
+    p.add_argument("--language", help="language code, e.g. en-IN")
+    p.set_defaults(func=cmd_test_call)
 
     p = sub.add_parser("serve", help="run the web app")
     p.add_argument("--host", default="127.0.0.1")

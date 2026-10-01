@@ -138,6 +138,18 @@ class CallbackStatus(enum.StrEnum):
     CANCELED = "canceled"
 
 
+class FollowUpKind(enum.StrEnum):
+    """What a Callback row asks the team to do."""
+
+    CALLBACK = "callback"  # call back at scheduled_for (bot or RM)
+    RM_REQUEST = "rm_request"  # partner asked for a relationship manager
+    COMMISSION_QUERY = "commission_query"  # commission structure question for the team
+    COLLATERAL_REQUEST = "collateral_request"  # single pagers / presentations to email
+    EMAIL_ISSUE = "email_issue"  # empanelment email not received
+    EMPANELMENT_HELP = "empanelment_help"  # needs help completing empanelment
+    OTHER = "other"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
@@ -149,7 +161,8 @@ class Distributor(TimestampMixin, Base):
     __tablename__ = "distributors"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    arn: Mapped[str] = mapped_column(String(32), unique=True, index=True)  # canonical "ARN-12345"
+    # Canonical "ARN-12345". Optional: some lists (e.g. CRM exports) have no ARN; such rows are matched by phone.
+    arn: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     firm_name: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str] = mapped_column(String(20), index=True)  # E.164, e.g. +919876543210
@@ -263,6 +276,8 @@ class Callback(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     distributor_id: Mapped[int] = mapped_column(ForeignKey("distributors.id"), index=True)
     call_id: Mapped[int | None] = mapped_column(ForeignKey("calls.id"))
+    kind: Mapped[FollowUpKind] = mapped_column(_enum(FollowUpKind), default=FollowUpKind.CALLBACK, index=True)
+    # For CALLBACK: when to call. For other kinds: when the request was logged (handle ASAP).
     scheduled_for: Mapped[datetime] = mapped_column(DateTime, index=True)
     with_rm: Mapped[bool] = mapped_column(Boolean, default=True)  # human RM vs. bot re-call
     notes: Mapped[str | None] = mapped_column(Text)

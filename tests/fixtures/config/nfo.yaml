@@ -1,0 +1,45 @@
+# NFO facts - the ONLY scheme information the bot is allowed to state.
+# >>> PLACEHOLDER CONTENT: replace with the approved SID/KIM details of your NFO. <<<
+# Rules (enforced in the prompt and by the compliance screen):
+#   * No return projections, past-performance claims or "guaranteed"/"assured"/"risk-free" language.
+#   * key_highlights must be factual and taken from the SID/KIM or approved marketing material.
+
+scheme_name: "Sample Flexi Cap Fund"                                   # TODO
+category: "Flexi Cap Fund"                                              # TODO: SEBI category
+scheme_type: >-                                                         # TODO: exactly as in SID
+  An open-ended dynamic equity scheme investing across large cap, mid cap and small cap stocks.
+investment_objective: >-                                                # TODO: exactly as in SID
+  To generate long-term capital appreciation by investing predominantly in equity and equity
+  related instruments across market capitalisation. There is no assurance that the investment
+  objective of the scheme will be achieved.
+benchmark: "Nifty 500 TRI"                                              # TODO
+fund_managers:                                                          # TODO
+  - "Fund Manager Name 1"
+  - "Fund Manager Name 2"
+nfo_open_date: 2026-10-20                                               # TODO
+nfo_close_date: 2026-11-03                                              # TODO
+allotment_or_reopen_note: >-                                            # TODO
+  The scheme re-opens for continuous sale and repurchase within five business days of allotment.
+min_investment: "Rs 5,000 and in multiples of Re 1 thereafter"          # TODO
+sip_details: "SIP available from Rs 500 per month"                      # TODO
+plans_and_options:                                                      # TODO
+  - "Regular Plan and Direct Plan"
+  - "Growth and IDCW options"
+exit_load: "1% if redeemed within 1 year of allotment; nil thereafter"  # TODO
+riskometer: "Very High"                                                 # TODO
+key_highlights:                                                         # TODO: approved talking points only
+  - "Flexibility to invest across large, mid and small cap companies based on market opportunities."
+  - "Managed by an experienced equity team with a disciplined research process."
+distributor_support:                                                    # TODO
+  - "NFO marketing kit with investor-ready creatives and presentations."
+  - "Fund manager webinar for partners during the NFO period."
+  - "Regional RM support for investor meetings."
+commission_response: >-
+  The brokerage structure for this scheme will be shared with you in writing by our relationship
+  manager after empanelment. As per SEBI rules, there is no upfront commission and all brokerage is trail based.
+sid_url: "https://www.sample-mf.example/nfo/sid.pdf"                    # TODO
+kim_url: "https://www.sample-mf.example/nfo/kim.pdf"                    # TODO
+mandatory_disclaimer: >-
+  Mutual Fund investments are subject to market risks, read all scheme related documents carefully.
+mandatory_disclaimer_translations:
+  hi-IN: "म्यूचुअल फंड निवेश बाज़ार जोखिमों के अधीन हैं, योजना संबंधी सभी दस्तावेज़ ध्यान से पढ़ें।"

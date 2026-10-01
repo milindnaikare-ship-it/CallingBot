@@ -31,6 +31,7 @@ from callingbot.models import (
     CallStatus,
     DNCEntry,
     EmpanelmentStatus,
+    FollowUpKind,
     InterestLevel,
     MessageChannel,
     MessageStatus,
@@ -44,6 +45,7 @@ EXPECTED_TOOLS = {
     "schedule_callback",
     "set_language",
     "transfer_to_human",
+    "log_request",
     "opt_out",
     "record_outcome",
     "end_call",
@@ -647,3 +649,47 @@ def test_record_outcome_dispositions_replace_progress(make_ctx):
     assert ctx.call.outcome == CallOutcome.ALREADY_EMPANELLED
     _record(ctx, "wrong_person", level=None)
     assert ctx.call.outcome == CallOutcome.WRONG_PERSON
+
+
+# --- log_request -------------------------------------------------------------------------------
+
+
+def test_log_request_creates_follow_up_for_the_team(session, make_ctx):
+    ctx = make_ctx()
+    out = execute_tool(ctx, "log_request", {"kind": "rm_request", "details": "Wants an RM for Pune"})
+    assert payload(out)["logged"] is True and not out.is_error and not out.end_call
+    req = session.scalars(select(Callback)).one()
+    assert req.kind == FollowUpKind.RM_REQUEST and req.with_rm
+    assert req.scheduled_for == IN_WINDOW_UTC and req.notes == "Wants an RM for Pune"
+    assert req.call_id == ctx.call.id and req.distributor_id == ctx.distributor.id
+    assert ctx.call.outcome == CallOutcome.INTERESTED
+    assert ctx.distributor.status == EmpanelmentStatus.INTERESTED
+    assert audits(session, "request_logged")[0].detail["request_kind"] == "rm_request"
+
+
+def test_log_request_same_kind_refreshes_note(session, make_ctx):
+    ctx = make_ctx()
+    execute_tool(ctx, "log_request", {"kind": "commission_query", "details": "first"})
+    execute_tool(ctx, "log_request", {"kind": "commission_query", "details": "second"})
+    execute_tool(ctx, "log_request", {"kind": "collateral_request", "details": "single pager"})
+    rows = {r.kind: r.notes for r in session.scalars(select(Callback))}
+    assert rows == {FollowUpKind.COMMISSION_QUERY: "second", FollowUpKind.COLLATERAL_REQUEST: "single pager"}
+
+
+def test_log_request_keeps_stronger_outcome(make_ctx):
+    ctx = make_ctx(outcome=CallOutcome.ALREADY_EMPANELLED)
+    execute_tool(ctx, "log_request", {"kind": "collateral_request", "details": "deck"})
+    assert ctx.call.outcome == CallOutcome.ALREADY_EMPANELLED
+
+
+def test_log_request_rejects_unknown_kind(make_ctx):
+    out = execute_tool(make_ctx(), "log_request", {"kind": "pizza", "details": "x"})
+    assert out.is_error
+
+
+def test_schedule_callback_does_not_overwrite_logged_request(session, make_ctx):
+    ctx = make_ctx()
+    execute_tool(ctx, "log_request", {"kind": "email_issue", "details": "No email received"})
+    execute_tool(ctx, "schedule_callback", {"when_local": "2026-10-14 11:30", "with_rm": True, "notes": "cb"})
+    kinds = sorted(r.kind.value for r in session.scalars(select(Callback)))
+    assert kinds == ["callback", "email_issue"]

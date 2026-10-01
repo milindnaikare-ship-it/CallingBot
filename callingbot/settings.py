@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # --- LLM (Claude) ------------------------------------------------------
     # "fake" runs a scripted offline bot (no API key needed) - useful for demos and tests.
     llm_provider: Literal["anthropic", "fake"] = "anthropic"
-    llm_model: str = "claude-opus-5-5"
+    llm_model: str = "claude-sonnet-5-5"
     # Effort controls thinking depth and therefore latency. "low" suits live voice turns.
     llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     # Thinking counts toward max_tokens, so leave headroom above the short spoken reply.
@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
     twilio_validate_signature: bool = True
-    twilio_machine_detection: bool = True
+    # Answering-machine detection adds a few seconds of silence after pick-up; off by default.
+    twilio_machine_detection: bool = False
     twilio_record_calls: bool = False
 
     exotel_account_sid: str | None = None
@@ -70,7 +71,7 @@ class Settings(BaseSettings):
 
     # --- Messaging (empanelment links, follow-ups) -----------------------------
     sms_provider: Literal["outbox", "twilio"] = "outbox"
-    whatsapp_provider: Literal["outbox", "meta"] = "outbox"
+    whatsapp_provider: Literal["outbox", "meta", "twilio"] = "outbox"
     email_provider: Literal["outbox", "smtp"] = "outbox"
 
     smtp_host: str | None = None
@@ -81,6 +82,8 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
 
     twilio_sms_from: str | None = None
+    # Twilio WhatsApp sender, e.g. the sandbox "whatsapp:+14155238886" for testing.
+    twilio_whatsapp_from: str | None = None
 
     meta_whatsapp_token: str | None = None
     meta_whatsapp_phone_number_id: str | None = None

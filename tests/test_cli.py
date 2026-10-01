@@ -8,7 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from conftest import IN_WINDOW_UTC, ROOT
+from conftest import FIXTURE_CONFIG, IN_WINDOW_UTC, ROOT
 from sqlalchemy import func, select
 
 from callingbot import cli, db
@@ -54,7 +54,7 @@ def env(tmp_path: Path, monkeypatch):
     for var in _ENV_TO_CLEAR:
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'cli.db'}")
-    monkeypatch.setenv("CONFIG_DIR", str(ROOT / "config"))
+    monkeypatch.setenv("CONFIG_DIR", str(FIXTURE_CONFIG))
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("LLM_PROVIDER", "fake")
     monkeypatch.setenv("TELEPHONY_PROVIDER", "simulator")
@@ -482,7 +482,7 @@ def test_check_config_quiet_when_configured(env, capsys, monkeypatch):
 
 def test_check_config_invalid_yaml_values(env, capsys, monkeypatch, tmp_path):
     config = tmp_path / "config"
-    shutil.copytree(ROOT / "config", config)
+    shutil.copytree(FIXTURE_CONFIG, config)
     (config / "campaign.yaml").write_text('window_start: "19:00"\nwindow_end: "10:00"\n', encoding="utf-8")
     monkeypatch.setenv("CONFIG_DIR", str(config))
     get_settings.cache_clear()
@@ -525,7 +525,7 @@ def test_simulate_argument_errors(env, capsys):
     code, _, err = run(capsys, "simulate", "--arn", "not an arn")
     assert code == 1 and "invalid ARN" in err
     code, _, err = run(capsys, "simulate", "--arn", "424242")
-    assert code == 1 and "no distributor with ARN ARN-424242" in err
+    assert code == 1 and "no matching distributor" in err
 
 
 def _scripted_input(monkeypatch, lines: list[str]) -> list[str]:
@@ -607,3 +607,87 @@ def test_simulate_contacts_state_untouched(env, capsys, monkeypatch):
     states = query(lambda s: set(s.scalars(select(CampaignContact.state)).all()))
     attempts = query(lambda s: s.scalar(select(func.sum(CampaignContact.attempts))))
     assert states == {ContactState.PENDING} and attempts == 0
+
+
+# --- test-call -------------------------------------------------------------------------------------
+
+
+class _FakeTwilio(SimulatorProvider):
+    name = "twilio"
+
+    def __init__(self, fail: bool = False):
+        super().__init__()
+        self.fail = fail
+
+    def place_call(self, *, to_number: str, call_id: int):
+        from callingbot.telephony import TelephonyError
+
+        if self.fail:
+            raise TelephonyError("Twilio error 21219: unverified number")
+        return super().place_call(to_number=to_number, call_id=call_id)
+
+
+@pytest.fixture
+def twilio_env(env, monkeypatch, capsys):
+    import callingbot.telephony as telephony
+
+    monkeypatch.setenv("TELEPHONY_PROVIDER", "twilio")
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC" + "0" * 32)
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TWILIO_FROM_NUMBER", "+14155550100")
+    get_settings.cache_clear()
+    provider = _FakeTwilio()
+    monkeypatch.setattr(telephony, "get_provider", lambda name, settings: provider)
+    (env / "poc.csv").write_text("Name,Mobile No.,Location\nPoc Person,9876501234,Mumbai\n")
+    assert run(capsys, "import-distributors", str(env / "poc.csv"))[0] == 0
+    return provider
+
+
+def test_test_call_places_one_call(twilio_env, capsys):
+    code, out, err = run(capsys, "test-call", "--phone", "98765 01234")
+    assert code == 0, err
+    assert twilio_env.placed[0]["to_number"] == "+919876501234"
+    call = query(lambda s: s.scalars(select(Call)).one())
+    assert call.provider == "twilio" and call.status == CallStatus.INITIATED and call.campaign_id is None
+    assert call.provider_call_id == twilio_env.placed[0]["provider_call_id"]
+    assert "press any key" in out and "+91******1234" in out
+
+
+def test_test_call_respects_window_unless_overridden(twilio_env, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "utcnow", lambda: IN_WINDOW_UTC + timedelta(hours=10))  # 21:00 IST
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234")
+    assert code == 1 and "outside the calling window" in err and not twilio_env.placed
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234", "--ignore-window")
+    assert code == 0, err
+    assert len(twilio_env.placed) == 1
+
+
+def test_test_call_refuses_dnc_and_unknown_numbers(twilio_env, capsys):
+    from callingbot.compliance import add_to_dnc
+
+    code, _, err = run(capsys, "test-call", "--phone", "9123456789")
+    assert code == 1 and "no imported distributor" in err
+    session = db.new_session()
+    add_to_dnc(session, "+919876501234", reason="test", source="manual")
+    session.commit()
+    session.close()
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234")
+    assert code == 1 and "do-not-call" in err and not twilio_env.placed
+
+
+def test_test_call_records_provider_rejection(twilio_env, capsys):
+    twilio_env.fail = True
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234")
+    assert code == 1 and "21219" in err
+    call = query(lambda s: s.scalars(select(Call)).one())
+    assert call.status == CallStatus.FAILED and "21219" in (call.error or "")
+
+
+def test_test_call_needs_real_provider_and_public_url(env, capsys, monkeypatch):
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234")
+    assert code == 1 and "TELEPHONY_PROVIDER=simulator" in err
+    monkeypatch.setenv("TELEPHONY_PROVIDER", "twilio")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "http://localhost:8000")
+    get_settings.cache_clear()
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234")
+    assert code == 1 and "ngrok" in err

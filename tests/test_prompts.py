@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from conftest import IN_WINDOW_UTC, ROOT
+from conftest import FIXTURE_CONFIG, IN_WINDOW_UTC, ROOT
 
 from callingbot.agent.prompts import (
     CALL_CONTEXT_HEADER,
@@ -49,7 +49,7 @@ def test_system_prompt_is_deterministic(kb):
     first = build_system_prompt(kb)
     assert first == build_system_prompt(kb)
     # A freshly loaded knowledge base (new objects, same files) gives byte-identical text.
-    assert first == build_system_prompt(load_knowledge(ROOT / "config"))
+    assert first == build_system_prompt(load_knowledge(FIXTURE_CONFIG))
 
 
 def test_system_prompt_contains_approved_knowledge(kb):

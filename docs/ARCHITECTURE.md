@@ -183,7 +183,15 @@ class DemoLLM(LLMClient)          # offline keyword-driven bot using the same to
 ```
 
 **Tool names (fixed):** `verify_arn`, `update_distributor_details`, `send_empanelment_link`,
-`schedule_callback`, `set_language`, `transfer_to_human`, `opt_out`, `record_outcome`, `end_call`.
+`schedule_callback`, `set_language`, `transfer_to_human`, `log_request`, `opt_out`, `record_outcome`,
+`end_call`. `log_request` creates a `Callback` row whose `kind` (`FollowUpKind`) tells the partner
+services team what to do (RM request, commission query, collateral, email issue, empanelment help).
+
+**Approved call script.** When `config/script.yaml` exists, the system prompt renders its steps and
+standard responses and the bot follows them; `KnowledgeBase.approved_texts()` (script, FAQ answers,
+commission response, disclaimers) is passed to `compliance.screen_bot_utterance(..., approved=...)`
+so Compliance-approved sentences - including approved statistics - pass the screen verbatim while
+any altered figure is still blocked.
 
 ### 4.5 `callingbot.telephony`
 

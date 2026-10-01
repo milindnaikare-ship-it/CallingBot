@@ -172,7 +172,7 @@ Model settings:
 
 | Setting | Default | Notes |
 |---|---|---|
-| `LLM_MODEL` | `claude-opus-5-5` | The AMC may evaluate `claude-sonnet-5-5` for lower latency and cost. Compare both on real pilot transcripts before deciding. |
+| `LLM_MODEL` | `claude-sonnet-5-5` | Chosen for the POC (fast, cost-effective for live voice). `claude-opus-5-5` is the alternative for deeper reasoning at higher latency and cost. |
 | `LLM_EFFORT` | `low` | How long the model thinks before it replies. `low` keeps voice turns fast. |
 | `LLM_ENABLE_FALLBACKS` | `true` | If the API declines a request for safety reasons, the server retries it automatically on a fallback model (Claude API only). |
 
@@ -262,7 +262,8 @@ and the dialer after you change them.
 | `callingbot campaign add NAME` | Adds **all eligible distributors** to the campaign. Opted-out, already empanelled and wrong-number distributors are never added. |
 | `callingbot campaign start NAME` / `pause NAME` / `list` | Starts or pauses dialling, or lists campaigns. |
 | `callingbot run-dialer --campaign NAME [--once] [--interval SECONDS]` | Dials due contacts of an active campaign. `--once` does one pass and exits (useful with cron). |
-| `callingbot simulate [--arn ARN] [--language CODE]` | Simulated conversation in the terminal, as a given distributor and language (`en-IN`, `hi-IN`). |
+| `callingbot simulate [--arn ARN \| --phone NUMBER] [--language CODE]` | Simulated conversation in the terminal, as a given distributor and language. |
+| `callingbot test-call (--phone NUMBER \| --arn ARN) [--ignore-window]` | Phone one imported distributor now, outside any campaign - for closed POC testing (see [docs/TWILIO_SETUP.md](docs/TWILIO_SETUP.md)). |
 | `callingbot serve [--host HOST] [--port PORT] [--reload]` | Runs the web app (`uvicorn --factory callingbot.web.app:create_app`). |
 | `callingbot stats [--campaign NAME]` | Prints funnel and call statistics. |
 | `callingbot export-leads PATH [--campaign NAME]` | Exports leads (distributors with a positive outcome, such as interested, link sent or callback requested) to a CSV for the RM team. |

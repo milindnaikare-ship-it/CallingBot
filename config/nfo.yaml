@@ -1,45 +1,34 @@
-# NFO facts - the ONLY scheme information the bot is allowed to state.
-# >>> PLACEHOLDER CONTENT: replace with the approved SID/KIM details of your NFO. <<<
-# Rules (enforced in the prompt and by the compliance screen):
-#   * No return projections, past-performance claims or "guaranteed"/"assured"/"risk-free" language.
-#   * key_highlights must be factual and taken from the SID/KIM or approved marketing material.
+# NFO facts - the ONLY scheme information the bot may state. Fields left null are "to be shared by the
+# team": the bot says the team will share those details instead of guessing.
+# Source: AMC-supplied bot script. Performance figures approved by Compliance.
 
-scheme_name: "Sample Flexi Cap Fund"                                   # TODO
-category: "Flexi Cap Fund"                                              # TODO: SEBI category
-scheme_type: >-                                                         # TODO: exactly as in SID
-  An open-ended dynamic equity scheme investing across large cap, mid cap and small cap stocks.
-investment_objective: >-                                                # TODO: exactly as in SID
-  To generate long-term capital appreciation by investing predominantly in equity and equity
-  related instruments across market capitalisation. There is no assurance that the investment
-  objective of the scheme will be achieved.
-benchmark: "Nifty 500 TRI"                                              # TODO
-fund_managers:                                                          # TODO
-  - "Fund Manager Name 1"
-  - "Fund Manager Name 2"
-nfo_open_date: 2026-10-20                                               # TODO
-nfo_close_date: 2026-11-03                                              # TODO
-allotment_or_reopen_note: >-                                            # TODO
-  The scheme re-opens for continuous sale and repurchase within five business days of allotment.
-min_investment: "Rs 5,000 and in multiples of Re 1 thereafter"          # TODO
-sip_details: "SIP available from Rs 500 per month"                      # TODO
-plans_and_options:                                                      # TODO
-  - "Regular Plan and Direct Plan"
-  - "Growth and IDCW options"
-exit_load: "1% if redeemed within 1 year of allotment; nil thereafter"  # TODO
-riskometer: "Very High"                                                 # TODO
-key_highlights:                                                         # TODO: approved talking points only
-  - "Flexibility to invest across large, mid and small cap companies based on market opportunities."
-  - "Managed by an experienced equity team with a disciplined research process."
-distributor_support:                                                    # TODO
-  - "NFO marketing kit with investor-ready creatives and presentations."
-  - "Fund manager webinar for partners during the NFO period."
-  - "Regional RM support for investor meetings."
+scheme_name: "Carnelian Small Cap Fund"
+category: "Small Cap Fund"
+scheme_type: null                 # TODO: exactly as in the SID
+investment_objective: null        # TODO: exactly as in the SID
+benchmark: null                   # TODO
+fund_managers: []                 # TODO
+nfo_open_date: 2026-10-16
+nfo_close_date: null              # TODO
+allotment_or_reopen_note: null
+min_investment: null              # TODO
+sip_details: null                 # TODO
+plans_and_options: []             # TODO
+exit_load: null                   # TODO
+riskometer: null                  # TODO
+key_highlights:
+  - "Carnelian's investment philosophy is QGARP: Quality Growth at a Reasonable Price."
+  - "Proprietary forensic research: CLEAR checks the numbers for financial strength and hidden risks; CONNECT validates the business, management and governance on the ground."
+  - "The fund intends to stay small, stay agile and invest with conviction, with a 5,000 crore rupee capacity cap."
+  - "A focused portfolio of 30 to 50 high-conviction Magic and Compounder opportunities, backed by high active share."
+distributor_support:
+  - "Single-pagers and product presentations are shared on the partner's registered email ID."
+  - "Specific marketing collateral can be requested at partnerservices@carnelianmf.com."
 commission_response: >-
-  The brokerage structure for this scheme will be shared with you in writing by our relationship
-  manager after empanelment. As per SEBI rules, there is no upfront commission and all brokerage is trail based.
-sid_url: "https://www.sample-mf.example/nfo/sid.pdf"                    # TODO
-kim_url: "https://www.sample-mf.example/nfo/kim.pdf"                    # TODO
+  Certainly. I've noted your query regarding the commission structure and will share it with the relevant
+  team. They will connect with you and take you through the details. You can also share your query at
+  partnerservices at carnelian M F dot com, and the concerned team will assist you.
+sid_url: null
+kim_url: null
 mandatory_disclaimer: >-
   Mutual Fund investments are subject to market risks, read all scheme related documents carefully.
-mandatory_disclaimer_translations:
-  hi-IN: "म्यूचुअल फंड निवेश बाज़ार जोखिमों के अधीन हैं, योजना संबंधी सभी दस्तावेज़ ध्यान से पढ़ें।"

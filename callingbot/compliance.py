@@ -22,8 +22,10 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
@@ -594,20 +596,71 @@ class ScreenResult:
     violations: list[str]  # rule ids, e.g. "guaranteed_returns", "return_projection", "risk_free", "advice"
 
 
-def screen_bot_utterance(text: str) -> ScreenResult:
+def screen_bot_utterance(text: str, approved: Iterable[str] = ()) -> ScreenResult:
     """Check a bot utterance against the SEBI/AMFI content rules before it is spoken.
 
     Rule ids: ``guaranteed_returns``, ``return_projection``, ``past_performance``, ``risk_free``,
     ``advice``, ``commission_figure``, ``inducement``. Claims that are explicitly negated
     ("returns are not guaranteed", "रिटर्न की गारंटी नहीं") pass; numeric return/commission
     figures never do. Violations are returned in rule order without duplicates.
+
+    ``approved`` is Compliance-approved wording (the AMC's call script, FAQ answers, ...). A sentence
+    that reproduces an approved sentence - same figures, near-identical words - is not flagged, so the
+    bot can deliver e.g. approved index statistics; any paraphrase that changes a figure still is.
     """
     norm = _normalize(text)
     if not norm.strip():
         return ScreenResult(ok=True, violations=[])
-    masked = _PSEUDO_NEGATION.sub(lambda m: " " * len(m.group()), norm)
-    violations = [rule_id for rule_id, patterns in _RULES if _matches_rule(patterns, norm, masked)]
+    violations = _violations(norm)
+    if violations and approved:
+        approved_sentences = _approved_sentences(tuple(approved))
+        remaining = [s for s in _split_sentences(norm) if not _is_approved(s, approved_sentences)]
+        violations = _violations(" ".join(remaining)) if remaining else []
     return ScreenResult(ok=not violations, violations=violations)
+
+
+def _violations(norm: str) -> list[str]:
+    masked = _PSEUDO_NEGATION.sub(lambda m: " " * len(m.group()), norm)
+    return [rule_id for rule_id, patterns in _RULES if _matches_rule(patterns, norm, masked)]
+
+
+# Sentence boundary: ., ! or ? (or the Devanagari danda) followed by whitespace - so "14.97%" stays whole.
+_SENTENCE_END = re.compile(r"(?<=[.!?\u0964])\s+")
+_TOKEN = re.compile(r"\d+(?:[.,]\d+)*%?|[^\W\d_]+")
+# Share of an utterance sentence's words that must appear in one approved sentence.
+_APPROVED_OVERLAP = 0.85
+_MIN_APPROVED_TOKENS = 4
+
+
+def _split_sentences(norm: str) -> list[str]:
+    return [s for s in _SENTENCE_END.split(norm) if s.strip()]
+
+
+def _tokens(sentence: str) -> list[str]:
+    return [t.replace(",", "") for t in _TOKEN.findall(sentence.lower())]
+
+
+@lru_cache(maxsize=32)
+def _approved_sentences(approved: tuple[str, ...]) -> tuple[frozenset[str], ...]:
+    out = []
+    for text in approved:
+        for sentence in _split_sentences(_normalize(text)):
+            out.append(frozenset(_tokens(sentence)))
+    return tuple(out)
+
+
+def _is_approved(sentence: str, approved: tuple[frozenset[str], ...]) -> bool:
+    tokens = _tokens(sentence)
+    if len(tokens) < _MIN_APPROVED_TOKENS:
+        return False
+    numbers = {t for t in tokens if t[0].isdigit()}
+    for candidate in approved:
+        if not numbers <= candidate:
+            continue  # every figure must be exactly as approved
+        overlap = sum(1 for t in tokens if t in candidate) / len(tokens)
+        if overlap >= _APPROVED_OVERLAP:
+            return True
+    return False
 
 
 def _matches_rule(patterns: tuple[_Pattern, ...], norm: str, masked: str) -> bool:

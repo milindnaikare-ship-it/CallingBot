@@ -169,6 +169,8 @@ class ConversationEngine:
         # Built once: both must be byte-identical on every request so the prompt cache hits.
         self.system_prompt = build_system_prompt(kb)
         self.tools = build_tool_definitions(kb)
+        # Compliance-approved wording (script, FAQs, ...) the utterance screen lets through verbatim.
+        self.approved_texts = tuple(kb.approved_texts())
 
     # -----------------------------------------------------------------------------------------
     # Public API
@@ -197,8 +199,9 @@ class ConversationEngine:
             return self._voicemail(call, answered_by, now)
 
         lang = self.kb.amc.language(call.language)
-        greeting = render_greeting(self.kb, lang.code, distributor)
-        context = build_call_context(self.kb, distributor, call, to_local(now, self.settings.timezone))
+        now_local = to_local(now, self.settings.timezone)
+        greeting = render_greeting(self.kb, lang.code, distributor, now_local)
+        context = build_call_context(self.kb, distributor, call, now_local)
         call.llm_messages = [
             {"role": "user", "content": context},
             {"role": "assistant", "content": [{"type": "text", "text": greeting}]},
@@ -357,7 +360,7 @@ class ConversationEngine:
 
     def _collect(self, call: Call, turn: _TurnState, text: str) -> None:
         """Screen one model utterance before it can be spoken."""
-        screen = compliance.screen_bot_utterance(text)
+        screen = compliance.screen_bot_utterance(text, approved=self.approved_texts)
         if screen.ok:
             turn.utterances.append(_Utterance(text))
             return

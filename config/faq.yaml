@@ -1,66 +1,73 @@
-# Approved answers to questions distributors commonly ask.
-# >>> PLACEHOLDER CONTENT: every answer must be reviewed by Distribution Ops and Compliance. <<<
-# The bot answers ONLY from these FAQs plus amc.yaml / nfo.yaml. Anything else goes to a callback with an RM.
+# Approved answers to distributor questions. Source: AMC-supplied bot script (empanelment documents FAQs).
+# Entries marked "developer-added" are not in the AMC script - Compliance to confirm or remove.
 
 faqs:
-  - question: "How did you get my number?"
+  # 1. IFA / Proprietorship
+  - question: "What documents are required for IFA/Proprietorship empanelment?"
+    answer: "For IFA or Proprietorship, you would need your AMFI Certificate, ARN Card, PAN Card, Cancelled Cheque and KYD."
+    tags: [documents, ifa]
+  - question: "Is the AMFI Certificate mandatory?"
+    answer: "Yes, the AMFI Certificate is required as part of the empanelment process."
+    tags: [documents, ifa]
+  - question: "Do I need to submit my ARN Card?"
+    answer: "Yes, a copy of your ARN Card is required."
+    tags: [documents, ifa]
+  - question: "Is a cancelled cheque required?"
+    answer: "Yes, please keep a cancelled cheque ready for the empanelment process."
+    tags: [documents, ifa]
+
+  # 2. Partnership Firm
+  - question: "What documents are required for a Partnership Firm?"
     answer: >-
-      Your contact details are listed as an AMFI registered mutual fund distributor. If you prefer
-      not to receive calls from us, I can remove your number right away.
-    tags: [privacy, consent]
-
-  - question: "Is there any fee for empanelment?"
-    answer: "No, there is no fee to get empanelled with us."            # TODO: confirm
-    tags: [empanelment]
-
-  # TODO: confirm SLA
-  - question: "How long does empanelment take?"
+      For a Partnership Firm, you would need the AMFI Certificate, ARN Card, PAN Card, Cancelled Cheque, KYD,
+      Principal Officer/Authorised Signatory details and Partnership Deed & Resolution.
+    tags: [documents, partnership]
+  - question: "Do I need to provide the Partnership Deed?"
+    answer: "Yes, the Partnership Deed and Resolution are required for a Partnership Firm."
+    tags: [documents, partnership]
+  - question: "What are Principal Officer/Authorised Signatory details?"
     answer: >-
-      Once we receive the completed form and documents, our operations team usually completes
-      verification within a few working days.
-    tags: [empanelment]
+      These are the details of the person or persons authorised to represent and operate the partnership firm
+      for the empanelment process.
+    tags: [documents, partnership]
 
-  # TODO: confirm with Ops
-  - question: "Do I need to be empanelled to sell the NFO?"
+  # 3. Company
+  - question: "What documents are required for a Company?"
     answer: >-
-      To receive brokerage on your clients' investments in our schemes, you need to be empanelled
-      with us. Our team can help you complete it before the NFO closes.
-    tags: [empanelment, nfo]
+      For a Company, you would need the AMFI Certificate, ARN Card, PAN Card, Cancelled Cheque, KYD, Memorandum
+      & Articles of Association, and Principal Officer/Authorised Signatory details.
+    tags: [documents, company]
+  - question: "Is a Board Resolution required?"
+    answer: "Yes, a Board Resolution is required as part of the Company empanelment process."
+    tags: [documents, company]
+  - question: "Do I need to submit the MOA and AOA?"
+    answer: "Yes, a copy of the Memorandum & Articles of Association is required."
+    tags: [documents, company]
+  - question: "What about authorised signatory details?"
+    answer: "Yes, Principal Officer/Authorised Signatory details are required for the Company."
+    tags: [documents, company]
 
-  # TODO
-  - question: "Which transaction platforms will the scheme be available on?"
+  # 4. HUF
+  - question: "What documents are required for an HUF?"
+    answer: "For an HUF, you would need the ARN Card, PAN Card, Cancelled Cheque and KYD."
+    tags: [documents, huf]
+  - question: "Is an AMFI Certificate required for HUF?"
     answer: >-
-      The scheme will be available on our partner portal and on the major industry transaction
-      platforms. Your relationship manager can confirm the details for your preferred platform.
-    tags: [operations]
+      As per the empanelment document list, the AMFI Certificate is not required for HUF. The required
+      documents are ARN Card, PAN Card, Cancelled Cheque and KYD.
+    tags: [documents, huf]
+  - question: "Do I need any Partnership Deed or Board Resolution for HUF?"
+    answer: "No. These documents are not applicable to HUF as per the empanelment requirements."
+    tags: [documents, huf]
 
-  # TODO: confirm
-  - question: "Will I get marketing material for the NFO?"
-    answer: >-
-      Yes. Empanelled partners receive an NFO marketing kit with investor-ready creatives and
-      presentations, along with invitations to partner webinars.
-    tags: [nfo, support]
-
-  - question: "What is the commission or brokerage?"
-    answer: >-
-      The brokerage structure will be shared with you in writing by our relationship manager after
-      empanelment. As per SEBI rules, there is no upfront commission and all brokerage is trail based.
-    tags: [commission]
-
+  # Developer-added safety answers (not in the AMC script) - Compliance to confirm.
   - question: "Are the returns guaranteed?"
     answer: >-
-      No. This is a market linked equity scheme with a Very High risk level on the riskometer, and
-      returns are not guaranteed. Please read the scheme information document carefully.
-    tags: [risk]
-
-  - question: "I am a SEBI registered investment adviser, not a distributor."
+      No. Mutual fund investments are market linked and returns are not guaranteed. Please read all scheme
+      related documents carefully.
+    tags: [risk, developer-added]
+  - question: "How did you get my number?"
     answer: >-
-      Thank you for letting me know. Our team works with investment advisers separately, so I will
-      arrange for the right person to get in touch with you.
-    tags: [ria]
-
-  - question: "I am already empanelled with you."
-    answer: >-
-      That's great, thank you for partnering with us. I can still share the NFO details and have
-      your relationship manager send you the marketing kit.
-    tags: [empanelment]
+      Your contact details are with us as a mutual fund distributor. If you prefer not to receive calls from
+      us, I can remove your number right away.
+    tags: [privacy, developer-added]

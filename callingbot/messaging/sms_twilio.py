@@ -45,7 +45,7 @@ class TwilioSMSSender(MessageSender):
         try:
             resp = self._client.post(
                 url,
-                data={"To": message.to, "From": self._from, "Body": message.body},
+                data={"To": self._address(message.to), "From": self._from, "Body": message.body},
                 auth=(self._account_sid, self._auth_token),
             )
         except httpx.HTTPError as exc:
@@ -65,9 +65,32 @@ class TwilioSMSSender(MessageSender):
             return SendResult(ok=False, error=f"HTTP {resp.status_code}{code}: {detail}"[:_MAX_ERROR_CHARS])
         return SendResult(ok=True, provider_message_id=data.get("sid"))
 
+    def _address(self, number: str) -> str:
+        return number
+
     def close(self) -> None:
         if self._owns_client:
             self._client.close()
+
+
+class TwilioWhatsAppSender(TwilioSMSSender):
+    """WhatsApp via Twilio's Messages API - the Twilio Sandbox for testing, or an approved Twilio
+    WhatsApp sender.
+
+    Free-form text is delivered only inside a 24-hour session the recipient opened (for the sandbox:
+    after sending the "join <code>" message). Business-initiated messages outside a session need a
+    WhatsApp-approved template, which is a go-live task.
+    """
+
+    channel = MessageChannel.WHATSAPP
+
+    def __init__(self, settings: Settings, http_client: httpx.Client | None = None):
+        super().__init__(settings, http_client)
+        sender = settings.twilio_whatsapp_from
+        self._from = self._address(sender) if sender else None
+
+    def _address(self, number: str) -> str:
+        return number if number.startswith("whatsapp:") else f"whatsapp:{number}"
 
 
 def _json_or_empty(resp: httpx.Response) -> dict:

@@ -492,3 +492,37 @@ def test_build_messenger_reports_all_missing_settings_at_once(settings):
         build_messenger(settings)
     message = str(excinfo.value)
     assert "META_WHATSAPP_TOKEN" in message and "SMTP_HOST" in message
+
+
+# --- Twilio WhatsApp (sandbox) -------------------------------------------------------------------
+
+
+def test_twilio_whatsapp_sender_prefixes_addresses(settings):
+    import httpx
+
+    from callingbot.messaging.sms_twilio import TwilioWhatsAppSender
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        from urllib.parse import parse_qs
+
+        seen.update({k: v[0] for k, v in parse_qs(request.content.decode()).items()})
+        return httpx.Response(201, json={"sid": "SM123"})
+
+    s = settings.model_copy(update={"whatsapp_provider": "twilio", "twilio_whatsapp_from": "+14155238886"})
+    sender = TwilioWhatsAppSender(s, httpx.Client(transport=httpx.MockTransport(handler)))
+    result = sender.send(OutgoingMessage(channel=MessageChannel.WHATSAPP, to="+919876543210", body="Hi"))
+    assert result.ok and result.provider_message_id == "SM123"
+    assert seen == {"To": "whatsapp:+919876543210", "From": "whatsapp:+14155238886", "Body": "Hi"}
+
+
+def test_build_messenger_twilio_whatsapp_requires_sender(settings):
+    with pytest.raises(ValueError, match="TWILIO_WHATSAPP_FROM"):
+        build_messenger(settings.model_copy(update={"whatsapp_provider": "twilio"}))
+    messenger = build_messenger(
+        settings.model_copy(update={"whatsapp_provider": "twilio", "twilio_whatsapp_from": "whatsapp:+1415"})
+    )
+    from callingbot.messaging.sms_twilio import TwilioWhatsAppSender
+
+    assert isinstance(messenger.senders[MessageChannel.WHATSAPP], TwilioWhatsAppSender)

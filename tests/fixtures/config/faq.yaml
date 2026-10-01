@@ -1,0 +1,66 @@
+# Approved answers to questions distributors commonly ask.
+# >>> PLACEHOLDER CONTENT: every answer must be reviewed by Distribution Ops and Compliance. <<<
+# The bot answers ONLY from these FAQs plus amc.yaml / nfo.yaml. Anything else goes to a callback with an RM.
+
+faqs:
+  - question: "How did you get my number?"
+    answer: >-
+      Your contact details are listed as an AMFI registered mutual fund distributor. If you prefer
+      not to receive calls from us, I can remove your number right away.
+    tags: [privacy, consent]
+
+  - question: "Is there any fee for empanelment?"
+    answer: "No, there is no fee to get empanelled with us."            # TODO: confirm
+    tags: [empanelment]
+
+  # TODO: confirm SLA
+  - question: "How long does empanelment take?"
+    answer: >-
+      Once we receive the completed form and documents, our operations team usually completes
+      verification within a few working days.
+    tags: [empanelment]
+
+  # TODO: confirm with Ops
+  - question: "Do I need to be empanelled to sell the NFO?"
+    answer: >-
+      To receive brokerage on your clients' investments in our schemes, you need to be empanelled
+      with us. Our team can help you complete it before the NFO closes.
+    tags: [empanelment, nfo]
+
+  # TODO
+  - question: "Which transaction platforms will the scheme be available on?"
+    answer: >-
+      The scheme will be available on our partner portal and on the major industry transaction
+      platforms. Your relationship manager can confirm the details for your preferred platform.
+    tags: [operations]
+
+  # TODO: confirm
+  - question: "Will I get marketing material for the NFO?"
+    answer: >-
+      Yes. Empanelled partners receive an NFO marketing kit with investor-ready creatives and
+      presentations, along with invitations to partner webinars.
+    tags: [nfo, support]
+
+  - question: "What is the commission or brokerage?"
+    answer: >-
+      The brokerage structure will be shared with you in writing by our relationship manager after
+      empanelment. As per SEBI rules, there is no upfront commission and all brokerage is trail based.
+    tags: [commission]
+
+  - question: "Are the returns guaranteed?"
+    answer: >-
+      No. This is a market linked equity scheme with a Very High risk level on the riskometer, and
+      returns are not guaranteed. Please read the scheme information document carefully.
+    tags: [risk]
+
+  - question: "I am a SEBI registered investment adviser, not a distributor."
+    answer: >-
+      Thank you for letting me know. Our team works with investment advisers separately, so I will
+      arrange for the right person to get in touch with you.
+    tags: [ria]
+
+  - question: "I am already empanelled with you."
+    answer: >-
+      That's great, thank you for partnering with us. I can still share the NFO details and have
+      your relationship manager send you the marketing kit.
+    tags: [empanelment]

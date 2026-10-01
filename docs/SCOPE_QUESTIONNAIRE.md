@@ -188,7 +188,7 @@ end up in `config/*.yaml`; deployment answers end up in `.env`.
 
 | # | Question | Why it matters | MVP default |
 |---|---|---|---|
-| O1 | Model choice: `claude-opus-5-5` (default) or evaluate `claude-sonnet-5-5` for lower latency and cost? | Trade-off between quality, latency and cost; best decided on pilot transcripts. | `claude-opus-5-5`, effort `low`. |
+| O1 | Model choice: `claude-sonnet-5-5` or `claude-opus-5-5`? | Trade-off between quality, latency and cost; best decided on pilot transcripts. | **Decided:** `claude-sonnet-5-5`, effort `low`. |
 | O2 | Access route: Anthropic API directly, or Claude through your cloud provider (residency, billing)? | Affects configuration and data residency; refusal fallback is available only on the Claude API. | Anthropic API, refusal fallback on. |
 | O3 | Is an offline demo mode (no AI) useful for internal training? | Demos without an API key or cost. | Available (`LLM_PROVIDER=fake`). |
 | O4 | Any enterprise data-handling terms required from the LLM vendor (retention, training use, location)? | InfoSec and Legal requirements. | Standard API terms; to be reviewed. |

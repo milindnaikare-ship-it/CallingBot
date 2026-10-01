@@ -1,0 +1,67 @@
+# AMC profile - what the bot says about who is calling and how empanelment works.
+# >>> PLACEHOLDER CONTENT: replace every value marked TODO with your AMC's approved details. <<<
+# Compliance must review this file before go-live.
+
+name: "Sample Mutual Fund"                  # TODO: legal/brand name, e.g. "XYZ Mutual Fund"
+short_name: "Sample MF"                     # TODO
+sebi_registration: "MF/000/00/0"            # TODO: SEBI registration number of the mutual fund
+bot_name: "Asha"                            # Name the voice assistant introduces itself with
+website: "https://www.sample-mf.example"    # TODO
+distributor_helpline: "1800-000-0000"       # TODO: toll-free / partner desk number
+distributor_email: "partners@sample-mf.example"   # TODO
+
+# Link sent by SMS / WhatsApp / email. {arn} is pre-filled; {ref} is our tracking reference.
+# The bot sends a tracked short link (/r/<token>) that redirects here, so we can see clicks.
+empanelment_url_template: "https://partners.sample-mf.example/empanel?arn={arn}&ref={ref}"   # TODO
+
+empanelment_steps:                          # TODO: confirm with Distribution Ops
+  - "Open the empanelment link we send you and fill in the online form."
+  - "Upload the documents listed in the form."
+  - "Our operations team verifies the details, usually within a few working days."
+  - "You receive a welcome email with your partner portal login."
+
+empanelment_documents:                      # TODO: confirm exact list (individual vs. non-individual)
+  - "Copy of a valid ARN card / AMFI registration certificate"
+  - "PAN card copy"
+  - "Cancelled cheque for brokerage payouts"
+  - "KYD acknowledgement"
+  - "GST registration certificate, if applicable"
+  - "Board resolution and authorised signatory list, for non-individual distributors"
+
+rm_team_description: "our distributor relationship managers in your region"
+
+distributor_value_props:                    # TODO: approved, factual reasons to partner with you
+  - "A dedicated relationship manager for your region."
+  - "Digital partner portal with transaction tracking and brokerage statements."
+  - "Ready-to-share marketing material and investor education content for the NFO."
+  - "Regular product training sessions and webinars for partners."
+
+default_language: "en-IN"
+languages:
+  - code: "en-IN"
+    name: "English"
+    twilio_voice: "Polly.Aditi"
+    twilio_speech_language: "en-IN"
+    greeting: >-
+      Hello! This is {bot_name}, a virtual assistant calling on behalf of {amc_name}.
+      This call may be recorded for quality and compliance purposes. Am I speaking with {name}?
+  - code: "hi-IN"
+    name: "Hindi"
+    twilio_voice: "Polly.Aditi"
+    twilio_speech_language: "hi-IN"
+    greeting: >-
+      नमस्ते! मैं {bot_name}, {amc_name} की ओर से एक वर्चुअल असिस्टेंट बोल रही हूँ।
+      यह कॉल गुणवत्ता और अनुपालन के लिए रिकॉर्ड की जा सकती है। क्या मेरी बात {name} जी से हो रही है?
+  # More languages can be enabled once scripts are approved, e.g.:
+  # - code: "mr-IN"
+  #   name: "Marathi"
+  #   twilio_voice: "Google.mr-IN-Standard-A"
+  #   twilio_speech_language: "mr-IN"
+  # - code: "gu-IN"
+  #   name: "Gujarati"
+  #   twilio_voice: "Google.gu-IN-Standard-A"
+  #   twilio_speech_language: "gu-IN"
+  # - code: "ta-IN"
+  #   name: "Tamil"
+  #   twilio_voice: "Google.ta-IN-Standard-A"
+  #   twilio_speech_language: "ta-IN"

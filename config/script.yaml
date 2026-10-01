@@ -1,0 +1,155 @@
+# Approved call script - Carnelian Mutual Fund distributor outreach (Small Cap Fund NFO).
+# Source: "final_bot_script_with_FAQs.docx" supplied by the AMC. Wording follows the original; only
+# speech renderings were changed (e.g. "Rs 20,000 crore" -> "20,000 crore rupees", "30-50" -> "30 to 50",
+# email addresses spelled out for text-to-speech). The bot follows this flow and wording, delivering long
+# passages in short spoken chunks.
+
+steps:
+  - id: availability_check
+    when: "The person has confirmed they are the partner named in the greeting."
+    say: >-
+      I hope you're doing well. Do you have a couple of minutes? I'd like to quickly share something
+      new from Carnelian that could be relevant for your business.
+    next: "If yes, go to introduction. If no or busy, go to callback_request."
+
+  - id: callback_request
+    when: "The partner does not have time now."
+    say: >-
+      No problem. May I know a convenient time for us to call you back and briefly take you through
+      Carnelian Mutual Fund and our upcoming Small Cap Fund?
+    next: "Schedule the callback for the time they give (schedule_callback), thank them and end the call."
+
+  - id: introduction
+    when: "The partner agrees to talk."
+    say: >-
+      Thank you. I'm calling to introduce Carnelian Mutual Fund and our entry into the Mutual Fund space.
+      Carnelian's founding members, Vikas Khemani, Swati Khemani and Manoj Bahety, established the firm in
+      2019, and today the Group manages over 20,000 crore rupees across its PMS and AIF strategies. We are
+      now launching our first small cap fund on 16th October, and I'd like to briefly share the opportunity
+      and take you through the empanelment process.
+    next: "Continue with partnership_invite."
+
+  - id: partnership_invite
+    when: "After the introduction."
+    say: >-
+      As we are expanding into the Mutual Fund space, we are inviting you to come on board as a Distributor
+      Partner with Carnelian Mutual Fund. Before we proceed, I can first give you a quick overview of
+      Carnelian's investment philosophy and our upcoming Small Cap NFO, or if you prefer, we can directly
+      take you through the empanelment process. What would you prefer?
+    next: "Overview -> overview_philosophy then overview_small_cap. Empanelment -> empanelment_check."
+
+  - id: overview_philosophy
+    when: "The partner wants the overview."
+    say: >-
+      At Carnelian, our philosophy is QGARP, Quality Growth at a Reasonable Price, which means we look for
+      strong businesses with sustainable growth at sensible valuations. It rests on two pillars: Risk, where
+      we focus on protecting capital, and Growth, where we seek businesses with strong earnings potential.
+      Before investing, our proprietary forensic approach comes in. CLEAR checks the numbers for financial
+      strength and hidden risks, while CONNECT validates the business, management and governance on the
+      ground. Once the business passes this test, we look for Magic opportunities with accelerated growth and
+      potential re-rating, and Compounders that can deliver sustainable long-term growth. Simply put, we manage
+      risk first and pursue quality growth with conviction.
+    next: "Pause and check they are with you, then overview_small_cap."
+
+  - id: overview_small_cap
+    when: "After the philosophy overview, or if the partner asks about the Small Cap Fund."
+    # Performance figures approved by Compliance (confirmed by the AMC). The line "Past performance may or
+    # may not be sustained in future." was added by the developer after the index statistics.
+    say: >-
+      What makes the Carnelian Small Cap Fund different is our intent to stay small, stay agile and invest
+      with conviction, with a 5,000 crore rupee capacity cap. Small caps open access to emerging sectors like
+      manufacturing, auto components, capital markets, chemicals, healthcare and pharma, giving us a wider
+      opportunity to identify tomorrow's potential leaders early. Historically, 70% of India's multi-baggers
+      have come from the small-cap universe, as per Bloomberg data. Nifty Small cap 250 has delivered strong
+      long-term compounding, with a 14.97% XIRR over the last 21 years in the cited period. And while small
+      caps can be volatile in the short term, the data shows that 7-year rolling periods in the cited history
+      had no negative returns, highlighting the importance of a long-term investment approach. Past
+      performance may or may not be sustained in future. 250+ companies and use our CLEAR CONNECT and forensic
+      research to identify just 30 to 50 high-conviction Magic and Compounder opportunities. This focused approach, backed by high active share, allows us to participate in emerging
+      sectors and businesses that could become tomorrow's leaders. Going live on 16th October, this gives you
+      an opportunity to bring a differentiated, research-led small-cap proposition to your clients from the
+      very beginning.
+    next: "Continue with after_overview."
+
+  - id: after_overview
+    when: "After the overview."
+    say: >-
+      If you'd like more details on the philosophy or Small Cap Fund, I can arrange a callback from our team.
+      Otherwise, we'd be delighted to have you empanel with Carnelian. The online process takes just 2 to 3
+      minutes.
+    next: "If they want a callback, schedule it. Otherwise go to empanelment_check."
+
+  - id: empanelment_check
+    when: "Moving to the empanelment process."
+    say: "Have you received the empanelment communication from Carnelian Mutual Fund?"
+    next: "Yes -> communication_received. No / not received -> communication_not_received."
+
+  - id: communication_received
+    when: "The partner has received the empanelment communication."
+    say: >-
+      That's great. The email contains the empanelment details and the link to complete the process. The
+      empanelment is an online process and should take approximately 2 to 3 minutes. Have you had a chance to
+      complete the empanelment yet?
+    next: "Completed -> empanelment_completed. Not completed -> empanelment_pending."
+
+  - id: empanelment_completed
+    when: "The partner has already completed the empanelment."
+    say: >-
+      The fund goes live on 16th October, so this is a good time to start identifying relevant client
+      opportunities and planning your participation.
+    next: "Record outcome already_empanelled, close the call."
+
+  - id: empanelment_pending
+    when: "The partner received the email but has not completed the empanelment."
+    say: >-
+      No problem. The link is available in the email you received. We would request you to complete the
+      empanelment at your convenience. If you have any questions while completing the process, I can assist
+      you on this call, or, if more convenient, I can arrange a callback from our team to guide you through
+      the process.
+    next: "Answer document questions from the FAQs, or schedule a callback. Record outcome interested."
+
+  - id: communication_not_received
+    when: "The partner has not received the empanelment email."
+    say: >-
+      No problem. The empanelment communication may have been sent to the email address registered with
+      AMFI. Is that email address still current?
+    next: "Still current -> check_spam. Email has changed -> email_changed."
+
+  - id: check_spam
+    when: "Their AMFI-registered email is still current."
+    say: >-
+      The communication may have gone into your spam or junk folder, so you may want to check there as well.
+      In any case, I can note this down and our team can assist you regarding the empanelment communication.
+    next: "log_request kind email_issue, then close."
+
+  - id: email_changed
+    when: "Their email address has changed."
+    say: >-
+      Understood. If your email ID has changed, I can share the direct empanelment link with you, through which
+      you can access and complete the empanelment process online. Would you like me to share the link?
+    next: "If yes, send_empanelment_link (SMS by default, or WhatsApp; email only to the new address they give)."
+
+standard_responses:
+  - id: rm_request
+    when: "The partner asks for a relationship manager (RM)."
+    say: >-
+      Certainly. I've noted your request for an RM and will share it with the relevant team for further
+      assistance. You can also write to partnerservices at carnelian M F dot com with your RM request, and the
+      concerned team will take it forward.
+    next: "log_request kind rm_request."
+
+  - id: commission
+    when: "The partner asks about commission, brokerage or payout."
+    say: >-
+      Certainly. I've noted your query regarding the commission structure and will share it with the relevant
+      team. They will connect with you and take you through the details. You can also share your query at
+      partnerservices at carnelian M F dot com, and the concerned team will assist you.
+    next: "log_request kind commission_query. Never quote figures."
+
+  - id: marketing_collateral
+    when: "The partner asks for marketing collateral, a single pager or a product presentation."
+    say: >-
+      Certainly. We will share the relevant single-pagers and product presentations on your registered email
+      ID. If you need any specific marketing collateral, you can also write to partnerservices at carnelianmf
+      dot com.
+    next: "log_request kind collateral_request."

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from callingbot.messaging.base import MessageSender, OutgoingMessage, SendResult
 from callingbot.messaging.email_smtp import SMTPEmailSender
 from callingbot.messaging.outbox import OutboxSender
-from callingbot.messaging.sms_twilio import TwilioSMSSender
+from callingbot.messaging.sms_twilio import TwilioSMSSender, TwilioWhatsAppSender
 from callingbot.messaging.whatsapp_meta import MetaWhatsAppSender
 from callingbot.models import MessageChannel, MessageStatus, OutboundMessage
 from callingbot.phone import mask_phone
@@ -132,6 +132,10 @@ def _missing_settings(settings: Settings) -> list[str]:
             missing.append("META_WHATSAPP_PHONE_NUMBER_ID")
         if not settings.meta_whatsapp_template_name:
             missing.append("META_WHATSAPP_TEMPLATE_NAME")
+    if settings.whatsapp_provider == "twilio":
+        for name in ("twilio_account_sid", "twilio_auth_token", "twilio_whatsapp_from"):
+            if not getattr(settings, name) and name.upper() not in missing:
+                missing.append(name.upper())
     if settings.email_provider == "smtp":
         if not settings.smtp_host:
             missing.append("SMTP_HOST")
@@ -163,6 +167,8 @@ def build_messenger(settings: Settings, *, http_client: httpx.Client | None = No
         MessageChannel.WHATSAPP: (
             MetaWhatsAppSender(settings, http_client)
             if settings.whatsapp_provider == "meta"
+            else TwilioWhatsAppSender(settings, http_client)
+            if settings.whatsapp_provider == "twilio"
             else OutboxSender(MessageChannel.WHATSAPP)
         ),
         MessageChannel.EMAIL: (
