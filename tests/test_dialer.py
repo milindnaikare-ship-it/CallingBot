@@ -79,7 +79,9 @@ def _dial(session, campaign, provider, kb, settings, now=IN_WINDOW_UTC, **kw) ->
 
 
 def _skip_reasons(session) -> list[str]:
-    events = session.scalars(select(AuditEvent).where(AuditEvent.kind == "dial_skipped").order_by(AuditEvent.id))
+    events = session.scalars(
+        select(AuditEvent).where(AuditEvent.kind == "dial_skipped").order_by(AuditEvent.id)
+    )
     return [e.detail["reason"] for e in events]
 
 
@@ -99,7 +101,9 @@ def test_add_all_dialable_distributors(session, campaign, make_distributor):
     session.flush()
 
     assert add_distributors_to_campaign(session, campaign) == 2
-    contacts = session.scalars(select(CampaignContact).where(CampaignContact.campaign_id == campaign.id)).all()
+    contacts = session.scalars(
+        select(CampaignContact).where(CampaignContact.campaign_id == campaign.id)
+    ).all()
     assert {c.distributor_id for c in contacts} == {d.id for d in ok}
     assert all(c.state == ContactState.PENDING and c.next_attempt_at is None for c in contacts)
     assert add_distributors_to_campaign(session, campaign) == 0  # existing members are not duplicated
@@ -126,7 +130,10 @@ def test_select_due_contacts_order_and_filters(session, campaign, make_distribut
 
     due = select_due_contacts(session, campaign, now_utc=now, limit=10)
     assert [c.id for c in due] == [asap.id, earlier.id, later.id, exactly_now.id]
-    assert [c.id for c in select_due_contacts(session, campaign, now_utc=now, limit=2)] == [asap.id, earlier.id]
+    assert [c.id for c in select_due_contacts(session, campaign, now_utc=now, limit=2)] == [
+        asap.id,
+        earlier.id,
+    ]
     assert select_due_contacts(session, campaign, now_utc=now, limit=0) == []
 
 
@@ -136,7 +143,9 @@ def test_select_due_contacts_order_and_filters(session, campaign, make_distribut
 
 
 @pytest.mark.parametrize("status", [CampaignStatus.DRAFT, CampaignStatus.PAUSED, CampaignStatus.COMPLETED])
-def test_inactive_campaign_places_nothing(session, campaign, provider, kb, settings, make_distributor, status):
+def test_inactive_campaign_places_nothing(
+    session, campaign, provider, kb, settings, make_distributor, status
+):
     _member(session, campaign, make_distributor())
     campaign.status = status
     report = _dial(session, campaign, provider, kb, settings)
@@ -159,11 +168,15 @@ def test_outside_calling_window_places_nothing(session, campaign, provider, kb, 
 
 def test_holiday_places_nothing(session, campaign, provider, kb, settings, make_distributor):
     _member(session, campaign, make_distributor())
-    report = _dial(session, campaign, provider, kb, settings, now=datetime(2026, 10, 2, 5, 30))  # Gandhi Jayanti
+    report = _dial(
+        session, campaign, provider, kb, settings, now=datetime(2026, 10, 2, 5, 30)
+    )  # Gandhi Jayanti
     assert report.window.reason == "holiday" and report.placed == 0
 
 
-def test_capacity_limited_by_max_concurrent_calls(session, campaign, provider, kb, settings, make_distributor):
+def test_capacity_limited_by_max_concurrent_calls(
+    session, campaign, provider, kb, settings, make_distributor
+):
     for _ in range(5):
         _member(session, campaign, make_distributor())
     report = _dial(session, campaign, provider, kb, settings)  # max_concurrent_calls = 3
@@ -182,7 +195,23 @@ def test_capacity_limited_by_calls_per_minute_and_max_new_calls(
         _member(session, campaign, make_distributor())
     fast = _policy(kb, calls_per_minute=2, max_concurrent_calls=10)
     assert _dial(session, campaign, provider, fast, settings).placed == 2
-    assert _dial(session, campaign, provider, fast, settings, max_new_calls=1).placed == 1
+    # calls_per_minute is a rolling minute: a round 30 s later (the default loop interval) waits.
+    half_minute = _dial(
+        session, campaign, provider, fast, settings, now=IN_WINDOW_UTC + timedelta(seconds=30)
+    )
+    assert half_minute.placed == 0
+    assert "2 placed in the last minute" in half_minute.messages[0]
+    later = IN_WINDOW_UTC + timedelta(seconds=61)
+    assert _dial(session, campaign, provider, fast, settings, now=later, max_new_calls=1).placed == 1
+    assert _dial(session, campaign, provider, fast, settings, now=later).placed == 1  # 2 per minute in total
+
+
+def test_new_calls_are_stamped_with_the_injected_clock(
+    session, campaign, provider, kb, settings, make_distributor
+):
+    contact = _member(session, campaign, make_distributor())
+    _dial(session, campaign, provider, kb, settings)
+    assert session.scalar(select(Call.created_at).where(Call.contact_id == contact.id)) == IN_WINDOW_UTC
 
 
 def test_active_calls_from_other_campaigns_count(session, campaign, provider, kb, settings, make_distributor):
@@ -211,7 +240,9 @@ def test_active_calls_from_other_campaigns_count(session, campaign, provider, kb
 # --------------------------------------------------------------------------------------------
 
 
-def test_ineligible_contacts_are_skipped_with_audit(session, campaign, provider, kb, settings, make_distributor):
+def test_ineligible_contacts_are_skipped_with_audit(
+    session, campaign, provider, kb, settings, make_distributor
+):
     on_list = make_distributor()
     session.add(DNCEntry(phone=on_list.phone, reason="ncpr", source="ncpr_scrub"))
     flagged = make_distributor(do_not_call=True)
@@ -236,7 +267,9 @@ def test_arn_valid_today_is_dialled(session, campaign, provider, kb, settings, m
     assert _dial(session, campaign, provider, kb, settings).placed == 1
 
 
-def test_skipped_contacts_do_not_consume_capacity(session, campaign, provider, kb, settings, make_distributor):
+def test_skipped_contacts_do_not_consume_capacity(
+    session, campaign, provider, kb, settings, make_distributor
+):
     for _ in range(4):
         _member(session, campaign, make_distributor(do_not_call=True))
     good = [_member(session, campaign, make_distributor()) for _ in range(3)]
@@ -263,10 +296,12 @@ def test_success_path_with_simulator(session, campaign, provider, kb, settings, 
     contact = _member(session, campaign, d)
     report = _dial(session, campaign, provider, kb, settings)
     assert (report.placed, report.skipped, report.failed) == (1, 0, 0)
-    assert "messages" not in report.messages
+    assert report.messages == []
 
     call = session.scalar(select(Call).where(Call.contact_id == contact.id))
-    assert provider.placed == [{"to_number": d.phone, "call_id": call.id, "provider_call_id": call.provider_call_id}]
+    assert provider.placed == [
+        {"to_number": d.phone, "call_id": call.id, "provider_call_id": call.provider_call_id}
+    ]
     assert call.status == CallStatus.INITIATED
     assert call.provider == "simulator"
     assert call.campaign_id == campaign.id
@@ -323,14 +358,18 @@ def test_telephony_error_marks_failed_and_schedules_retry(session, campaign, kb,
     assert failed.call_id == call.id and "carrier rejected" in failed.detail["error"]
 
 
-def test_unexpected_provider_exception_is_handled_like_a_failure(session, campaign, kb, settings, make_distributor):
+def test_unexpected_provider_exception_is_handled_like_a_failure(
+    session, campaign, kb, settings, make_distributor
+):
     contact = _member(session, campaign, make_distributor())
     report = _dial(session, campaign, BuggyProvider(), kb, settings)
     assert report.failed == 1
     assert contact.state == ContactState.PENDING
 
 
-def test_zero_backoff_failure_is_not_redialled_in_the_same_round(session, campaign, kb, settings, make_distributor):
+def test_zero_backoff_failure_is_not_redialled_in_the_same_round(
+    session, campaign, kb, settings, make_distributor
+):
     contacts = [_member(session, campaign, make_distributor()) for _ in range(2)]
     eager = _policy(kb, retry_backoff_minutes=[0], max_concurrent_calls=10, calls_per_minute=10)
     report = _dial(session, campaign, FailingProvider(), eager, settings)
@@ -338,7 +377,9 @@ def test_zero_backoff_failure_is_not_redialled_in_the_same_round(session, campai
     assert all(c.attempts == 1 for c in contacts)
 
 
-def test_due_bot_callback_is_closed_when_redialled(session, campaign, provider, kb, settings, make_distributor):
+def test_due_bot_callback_is_closed_when_redialled(
+    session, campaign, provider, kb, settings, make_distributor
+):
     d = make_distributor()
     _member(session, campaign, d, next_attempt_at=IN_WINDOW_UTC - timedelta(minutes=5))
     due = Callback(distributor_id=d.id, scheduled_for=IN_WINDOW_UTC - timedelta(minutes=5), with_rm=False)

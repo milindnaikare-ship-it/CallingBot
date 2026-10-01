@@ -45,7 +45,12 @@ def dial(session, make_distributor):
         session.add(contact)
         session.flush()
         call = create_call(
-            session, distributor=d, provider="simulator", campaign=campaign, contact=contact, language=language
+            session,
+            distributor=d,
+            provider="simulator",
+            campaign=campaign,
+            contact=contact,
+            language=language,
         )
         return d, contact, call
 
@@ -61,7 +66,9 @@ def _audits(session, kind: str) -> list[AuditEvent]:
 
 
 def _connect(session, call, kb, *, turns: int, at: datetime = IN_WINDOW_UTC) -> None:
-    apply_status_update(session, call, _status(CallStatus.IN_PROGRESS, answered_by="human"), kb=kb, now_utc=at)
+    apply_status_update(
+        session, call, _status(CallStatus.IN_PROGRESS, answered_by="human"), kb=kb, now_utc=at
+    )
     call.turn_count = turns
 
 
@@ -192,7 +199,11 @@ def test_late_terminal_callback_fills_missing_duration_and_recording(session, kb
     assert call.duration_seconds == 0
     assert call.recording_url == "https://rec/2"
     apply_status_update(
-        session, call, _status(CallStatus.BUSY, duration_seconds=99, recording_url="x"), kb=kb, now_utc=IN_WINDOW_UTC
+        session,
+        call,
+        _status(CallStatus.BUSY, duration_seconds=99, recording_url="x"),
+        kb=kb,
+        now_utc=IN_WINDOW_UTC,
     )
     assert call.duration_seconds == 0 and call.recording_url == "https://rec/2"
 
@@ -246,12 +257,18 @@ def test_second_attempt_uses_second_backoff(session, kb, dial):
 def test_retry_skips_sunday_and_holiday(session, kb, dial):
     # Saturday 2026-10-17 18:00 IST + 3h -> Sunday is not a calling day -> Monday 10:00 IST.
     _, contact, call = dial(attempts=1)
-    apply_status_update(session, call, _status(CallStatus.NO_ANSWER), kb=kb, now_utc=datetime(2026, 10, 17, 12, 30))
+    apply_status_update(
+        session, call, _status(CallStatus.NO_ANSWER), kb=kb, now_utc=datetime(2026, 10, 17, 12, 30)
+    )
     assert contact.next_attempt_at == datetime(2026, 10, 19, 4, 30)
     # Thursday 2026-10-01 18:00 IST + 3h -> Friday 2 Oct is Gandhi Jayanti -> Saturday 10:00 IST.
     _, contact2, call2 = dial(attempts=1)
     apply_status_update(
-        session, call2, _status(CallStatus.NO_ANSWER, provider_call_id="SIM-2"), kb=kb, now_utc=datetime(2026, 10, 1, 12, 30)
+        session,
+        call2,
+        _status(CallStatus.NO_ANSWER, provider_call_id="SIM-2"),
+        kb=kb,
+        now_utc=datetime(2026, 10, 1, 12, 30),
     )
     assert contact2.next_attempt_at == datetime(2026, 10, 3, 4, 30)
 

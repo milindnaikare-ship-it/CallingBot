@@ -265,7 +265,13 @@ ARN-801,Kiran,9880000001,E12,someday,Bengali,not-an-email,12
     for fragment in ("EUIN", "validity date", "language", "email", "PIN"):
         assert fragment in messages
     d = _by_arn(session, "ARN-801")
-    assert (d.euin, d.arn_valid_till, d.preferred_language, d.email, d.pincode) == (None, None, None, None, None)
+    assert (d.euin, d.arn_valid_till, d.preferred_language, d.email, d.pincode) == (
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
 
 
 def test_import_updates_existing_but_never_status_dnc_or_notes(session, make_distributor):
@@ -343,7 +349,9 @@ def test_import_dnc_alternate_phone_also_marks_do_not_call(session):
     session.add(DNCEntry(phone="+919892000002", reason="manual", source="manual"))
     session.flush()
     report = import_distributors_csv(
-        session, _csv("ARN,Name,Mobile,Alternate Phone\nARN-1101,Two Phones,9892000001,9892000002\n"), source="t"
+        session,
+        _csv("ARN,Name,Mobile,Alternate Phone\nARN-1101,Two Phones,9892000001,9892000002\n"),
+        source="t",
     )
     assert report.dnc_marked == 1
     assert _by_arn(session, "ARN-1101").do_not_call is True

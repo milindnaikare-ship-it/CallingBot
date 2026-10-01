@@ -162,6 +162,16 @@ def select_due_contacts(
     return list(session.scalars(_due_stmt(campaign, now_utc).limit(limit)))
 
 
+def count_recent_calls(session: Session, *, now_utc: datetime, seconds: int = 60) -> int:
+    """Calls created in the last ``seconds`` (all campaigns): the rolling base for ``calls_per_minute``."""
+    return (
+        session.scalar(
+            select(func.count(Call.id)).where(Call.created_at > now_utc - timedelta(seconds=seconds))
+        )
+        or 0
+    )
+
+
 def count_active_calls(session: Session, *, now_utc: datetime) -> int:
     """Calls currently using a line, across all campaigns and providers."""
     queued_cutoff = now_utc - timedelta(seconds=QUEUED_STALE_SECONDS)
@@ -260,13 +270,17 @@ def dial_due_contacts(
         return report
 
     active = count_active_calls(session, now_utc=now_utc)
-    limits = [policy.calls_per_minute, policy.max_concurrent_calls - active]
+    # Pacing is a rolling minute, not per round: the dialer loop runs every --interval seconds
+    # (30 by default), so a per-round budget would allow twice the configured rate.
+    recent = count_recent_calls(session, now_utc=now_utc)
+    limits = [policy.calls_per_minute - recent, policy.max_concurrent_calls - active]
     if max_new_calls is not None:
         limits.append(max_new_calls)
     capacity = max(0, min(limits))
     if capacity == 0:
         report.messages.append(
-            f"No capacity: {active} active call(s), max_concurrent_calls={policy.max_concurrent_calls}."
+            f"No capacity: {active} active call(s) (max {policy.max_concurrent_calls}), "
+            f"{recent} placed in the last minute (max {policy.calls_per_minute})."
         )
         return report
 
@@ -322,6 +336,9 @@ def _dial_one(
         contact=contact,
         language=distributor.preferred_language,
     )
+    # Stamp the row with the injected clock: pacing and stale-call reaping compare created_at
+    # with now_utc, so both must come from the same clock.
+    call.created_at = now_utc
     contact.attempts = (contact.attempts or 0) + 1
     contact.last_attempt_at = now_utc
     contact.state = ContactState.IN_PROGRESS

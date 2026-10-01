@@ -404,15 +404,27 @@ def cmd_run_dialer(args: argparse.Namespace, settings: Settings) -> int:
     try:
         while True:
             rounds += 1
-            with db.session_scope() as session:
-                campaign = _require_campaign(session, name)
-                reaped = reap_stale_calls(session, kb=kb, settings=settings, now_utc=utcnow())
-                report = dial_due_contacts(
-                    session, campaign=campaign, provider=provider, kb=kb, settings=settings, now_utc=utcnow()
-                )
-                active = campaign.status == CampaignStatus.ACTIVE
+            now = utcnow()
+            stamp = _local(now, settings, "%Y-%m-%d %H:%M:%S")
+            try:
+                with db.session_scope() as session:
+                    campaign = _require_campaign(session, name)
+                    reaped = reap_stale_calls(session, kb=kb, settings=settings, now_utc=now)
+                    report = dial_due_contacts(
+                        session, campaign=campaign, provider=provider, kb=kb, settings=settings, now_utc=now
+                    )
+                    active = campaign.status == CampaignStatus.ACTIVE
+            except SQLAlchemyError as exc:
+                # A transient database problem (e.g. SQLite locked by the web app) must not kill a
+                # long-running dialer; the round is rolled back and retried after the interval.
+                log.exception("Dialer round %d failed", rounds)
+                print(f"[{stamp}] round {rounds}: database error, will retry: {exc}", flush=True)
+                if args.once:
+                    return 1
+                time.sleep(args.interval)
+                continue
             line = (
-                f"[{_local(utcnow(), settings, '%Y-%m-%d %H:%M:%S')}] round {rounds}: placed {report.placed}, "
+                f"[{stamp}] round {rounds}: placed {report.placed}, "
                 f"skipped {report.skipped}, failed {report.failed}"
             )
             if reaped:
@@ -462,6 +474,24 @@ def _print_bot(response) -> None:
 
 
 def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
+    # Validate the arguments before importing the engine, so mistakes get a precise message.
+    kb = _load_kb(settings)
+    codes = [lang.code for lang in kb.amc.languages]
+    if args.language and args.language not in codes:
+        raise CLIError(f"language {args.language!r} is not enabled; choose one of: {', '.join(codes)}")
+    arn = None
+    if args.arn:
+        arn = normalize_arn(args.arn)
+        if arn is None:
+            raise CLIError(f"invalid ARN {args.arn!r}")
+    _open_db(settings)
+    if arn is not None:
+        with db.session_scope() as session:
+            if session.scalar(select(Distributor.id).where(Distributor.arn == arn)) is None:
+                raise CLIError(
+                    f"no distributor with ARN {arn}; import one or omit --arn to use the demo distributor"
+                )
+
     try:
         from callingbot.agent.engine import ConversationEngine
     except ImportError as exc:
@@ -469,29 +499,19 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
     from callingbot.agent.llm import build_llm
     from callingbot.messaging import build_messenger
 
-    kb = _load_kb(settings)
-    codes = [lang.code for lang in kb.amc.languages]
-    if args.language and args.language not in codes:
-        raise CLIError(f"language {args.language!r} is not enabled; choose one of: {', '.join(codes)}")
     try:
         llm = build_llm(settings)
         messenger = build_messenger(settings)
     except Exception as exc:  # missing API key / messaging credentials: explain, don't trace back
         raise CLIError(f"could not start the conversation engine: {exc}") from exc
 
-    _open_db(settings)
     with db.session_scope() as session:
-        if args.arn:
-            arn = normalize_arn(args.arn)
-            if arn is None:
-                raise CLIError(f"invalid ARN {args.arn!r}")
+        if arn is not None:
             distributor = session.scalar(select(Distributor).where(Distributor.arn == arn))
-            if distributor is None:
-                raise CLIError(
-                    f"no distributor with ARN {arn}; import one or omit --arn to use the demo distributor"
-                )
         else:
             distributor = _demo_distributor(session)
+            # The demo distributor is synthetic: it simply prefers whatever language was asked for.
+            distributor.preferred_language = args.language
         call = create_call(session, distributor=distributor, provider="simulator", language=args.language)
         apply_status_update(
             session,
@@ -507,7 +527,7 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
         )
 
         engine = ConversationEngine(session=session, kb=kb, settings=settings, llm=llm, messenger=messenger)
-        response = engine.start(call, answered_by="human")
+        response = _start_in_language(session, engine, call, distributor, args.language)
         _print_bot(response)
         while response.action == "gather":
             try:
@@ -530,6 +550,24 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
         session.commit()
         _print_call_summary(session, call, distributor)
     return 0
+
+
+def _start_in_language(session: Session, engine, call: Call, distributor: Distributor, language: str | None):
+    """``engine.start`` in ``language``, without permanently changing a real distributor's preference.
+
+    The engine picks the call language from ``distributor.preferred_language`` when the call is
+    answered, so an explicit ``--language`` is applied by overriding that preference for the
+    duration of ``start`` only, then restoring it.
+    """
+    original = distributor.preferred_language
+    if not language or language == original:
+        return engine.start(call, answered_by="human")
+    distributor.preferred_language = language
+    try:
+        return engine.start(call, answered_by="human")
+    finally:
+        distributor.preferred_language = original
+        session.commit()
 
 
 def _print_call_summary(session: Session, call: Call, distributor: Distributor) -> None:
