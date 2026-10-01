@@ -1,0 +1,13 @@
+ARN,ARN Holder's Name,Firm Name,Email,City,State,Pin,Telephone (R),Telephone (O),ARN Valid Till,EUIN,Preferred Language
+ARN-999901,Demo Distributor 01,Demo Wealth Partners 01,demo01@example.com,Mumbai,Maharashtra,400001,,90000 00001,31-Mar-2028,E999901,English
+ARN-999902,Demo Distributor 02,,demo02@example.com,Lucknow,Uttar Pradesh,226001,,+91 90000 00002,2027-06-30,,Hindi
+ARN-999903,Demo Distributor 03,Demo Investment Services 03,demo03@example.com,Pune,Maharashtra,411001,90000 00013,090000-00003,15/09/2028,e999903,en
+ARN-999904,Demo Distributor 04,Demo Finserv 04,demo04@example.com,Jaipur,Rajasthan,302001,,9000000004,31-12-2027,E999904,hi-IN
+ARN-999905,Demo Distributor 05,,demo05@example.com,Hyderabad,Telangana,500001,,040 2345 6789,30-Nov-2027,,English
+ARN-999906,Demo Distributor 06,Demo Capital Advisors 06,demo06@example.com,Bengaluru,Karnataka,560001,,919000000006,31-Mar-2025,,English
+ARN-999907,Demo Distributor 07,,demo07@example.com,Patna,Bihar,800001,,90000 00007,2028-01-31,E999907,Hindi
+ARN-999908,Demo Distributor 08,Demo Money Matters 08,demo08@example.com,Chennai,Tamil Nadu,600001,,90000 00008,30/04/2027,,English
+999909,Demo Distributor 09,,demo09@example.com,Indore,Madhya Pradesh,452001,,90000 00009,31-Aug-2028,E999909,Hindi
+ARN-999910,Demo Distributor 10,Demo Wealth Desk 10,demo10@example.com,Kolkata,West Bengal,700001,,90000 00010,31-10-2027,,Bengali
+ARN-999911,Demo Distributor 11,,demo11@example.com,New Delhi,Delhi,110001,,90000 00011,2027-12-31,E999911,
+ARN 999903,Demo Distributor 03 (duplicate row),Demo Investment Services 03,demo03.dup@example.com,Pune,Maharashtra,411001,,90000 00012,15/09/2028,E999903,English

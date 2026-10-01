@@ -1,0 +1,56 @@
+# Local / single-server deployment: web app + dialer + Postgres.
+#
+#   cp .env.example .env        # then edit it (passwords, provider, PUBLIC_BASE_URL, ...)
+#   docker compose up -d --build
+#   docker compose exec app callingbot campaign create "NFO Launch"
+#
+# Both the app and the dialer read .env. Compose also uses .env to fill ${...} below
+# (CAMPAIGN_NAME, POSTGRES_PASSWORD). Put an HTTPS reverse proxy in front of port 8000 before
+# exposing it to the internet (see docs/DEPLOYMENT.md).
+
+x-callingbot: &callingbot
+  build: .
+  image: callingbot:latest
+  env_file: .env
+  environment:
+    # Overrides any DATABASE_URL in .env so both services share the Postgres database.
+    DATABASE_URL: "postgresql+psycopg://callingbot:${POSTGRES_PASSWORD:-change-me-postgres}@postgres:5432/callingbot"
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  app:
+    <<: *callingbot
+    ports:
+      # Bound to localhost: publish through the reverse proxy, not directly.
+      - "127.0.0.1:8000:8000"
+
+  dialer:
+    <<: *callingbot
+    # One dialer per campaign. The app creates the tables on startup, so start it first.
+    command: callingbot run-dialer --campaign "${CAMPAIGN_NAME:-NFO Launch}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: callingbot
+      POSTGRES_USER: callingbot
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-change-me-postgres}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callingbot -d callingbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
