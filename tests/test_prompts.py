@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from conftest import FIXTURE_CONFIG, IN_WINDOW_UTC, ROOT
+from conftest import FIXTURE_CONFIG, IN_WINDOW_UTC
 
 from callingbot.agent.prompts import (
     CALL_CONTEXT_HEADER,
