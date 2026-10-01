@@ -381,16 +381,19 @@ def _add_dnc(request: Request, form: dict[str, str], distributor_id: int, user: 
 
 
 def _mark_do_not_call(session: Session, d: Distributor, reason: str) -> int:
-    """DNC-list every number of ``d``, mark it do-not-call and cancel its pending callbacks."""
+    """DNC-list every number of ``d``, mark it do-not-call and cancel its pending callbacks.
+
+    Returns how many pending callbacks were cancelled (add_to_dnc cancels those of every
+    distributor using the number; this one's are counted first and cancelled regardless)."""
+    pending = session.scalars(
+        select(Callback).where(Callback.distributor_id == d.id, Callback.status == CallbackStatus.PENDING)
+    ).all()
     for phone in dict.fromkeys(p for p in (d.phone, d.alt_phone) if p):
         compliance.add_to_dnc(session, phone, reason=reason, source="manual")
     # add_to_dnc matches distributors by normalised phone; make sure this one is marked regardless.
     funnel.advance_status(d, EmpanelmentStatus.DO_NOT_CALL)
     if not d.dnc_reason:
         d.dnc_reason = reason[:_MAX_REASON_CHARS]
-    pending = session.scalars(
-        select(Callback).where(Callback.distributor_id == d.id, Callback.status == CallbackStatus.PENDING)
-    ).all()
     for cb in pending:
         cb.status = CallbackStatus.CANCELED
     return len(pending)

@@ -455,3 +455,25 @@ def test_detect_opt_out_positive(text):
 )
 def test_detect_opt_out_negative(text):
     assert not detect_opt_out(text)
+
+
+def test_add_to_dnc_cancels_pending_callbacks(session, make_distributor):
+    from callingbot.models import Callback, CallbackStatus, FollowUpKind
+
+    d = make_distributor(phone="+919811100022")
+    other = make_distributor(phone="+919811100033")
+    when = datetime(2026, 10, 14, 6, 0)
+    session.add_all(
+        [
+            Callback(distributor_id=d.id, scheduled_for=when),
+            Callback(distributor_id=d.id, scheduled_for=when, kind=FollowUpKind.RM_REQUEST),
+            Callback(distributor_id=d.id, scheduled_for=when, status=CallbackStatus.DONE),
+            Callback(distributor_id=other.id, scheduled_for=when),
+        ]
+    )
+    session.flush()
+    add_to_dnc(session, "+919811100022", reason="asked", source="call_opt_out")
+    statuses = sorted(
+        (cb.distributor_id == d.id, cb.status.value) for cb in session.scalars(select(Callback))
+    )
+    assert statuses == [(False, "pending"), (True, "canceled"), (True, "canceled"), (True, "done")]

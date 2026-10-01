@@ -212,3 +212,17 @@ levels or better.
 | 8 | **Outdated content** (SID addendum, changed dates) | Low | High | YAML is the single source; change control with Compliance approval; tagged releases. | Product + Compliance |
 | 9 | **LLM or provider outage** | Low | Medium | Graceful failure (apology, automatic RM callback, hang-up); retries; alerting; pause the campaign. | Developer |
 | 10 | **Calling distributors with expired ARNs or already empanelled** | Medium | Low | ARN validity imported; funnel excludes empanelled distributors; Phase 4 portal sync. | Distribution Ops |
+
+## Known issues and follow-ups (from the build review)
+
+None of these block the closed POC; all are scheduled before the pilot (Phase 2) unless noted.
+
+| # | Issue | Impact | Planned fix |
+|---|---|---|---|
+| K1 | If the distributor hangs up while the bot is still preparing a reply, the reply's database write can land after the call was finalised and overwrite the "finalised" marker. | The funnel status still advances correctly. Campaign retry bookkeeping for that one call may be stale. | Optimistic locking (`version_id_col`) on `Call`, or `SELECT ... FOR UPDATE` in webhooks on PostgreSQL. |
+| K2 | A tool that fails *after* a database flush leaves the session needing a rollback; the turn then ends with the apology path. | Rare: only on database errors. | Run each tool in a SAVEPOINT (`session.begin_nested()`). |
+| K3 | Simulated calls (browser simulator) count toward the dialer's concurrent-call limit until hung up or reaped. | Only matters when simulating during a live campaign. | Exclude `provider == "simulator"` from the active-call count. |
+| K4 | Exotel's conversational leg needs the Exotel Voicebot (streaming) applet. | Exotel can place calls and report status, but cannot hold the conversation yet. | Phase 3 streaming voice. |
+| K5 | The offline demo bot (`LLM_PROVIDER=fake`) follows a generic flow, not the AMC's call script. | Only Claude follows `config/script.yaml`. | Test the scripted conversation with `LLM_PROVIDER=anthropic` in the simulator. |
+| K6 | The CSRF check trusts the `Host` header or the `PUBLIC_BASE_URL` host. | Behind a proxy that rewrites `Host`, use the public hostname for the dashboard. | Admin-origin allow-list setting if needed. |
+| K7 | The empanelment URL has no ARN/reference parameter. | Clicks are tracked by our redirect, but completed forms on the partner portal cannot be matched to a call automatically. | Ask the partner-portal team to accept `?ref=` (the template supports `{arn}` and `{ref}`). |

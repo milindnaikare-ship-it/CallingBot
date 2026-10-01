@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from callingbot import funnel
 from callingbot.knowledge import CampaignPolicy
-from callingbot.models import Distributor, DNCEntry, EmpanelmentStatus, audit
+from callingbot.models import Callback, CallbackStatus, Distributor, DNCEntry, EmpanelmentStatus, audit
 from callingbot.phone import mask_phone, normalize_indian_mobile
 from callingbot.timeutil import to_local, to_utc_naive
 
@@ -146,7 +146,8 @@ def is_dnc(session: Session, phone: str) -> bool:
 
 
 def add_to_dnc(session: Session, phone: str, *, reason: str, source: str) -> DNCEntry:
-    """Put ``phone`` on the internal DNC list and mark every distributor using it as do-not-call.
+    """Put ``phone`` on the internal DNC list, mark every distributor using it as do-not-call and
+    cancel their pending callbacks / follow-up requests (no one may phone them on our behalf).
 
     Idempotent: an existing entry is returned unchanged (the first reason/source is kept as the
     original evidence). Every request is still audited as ``dnc_added`` - a repeated opt-out is
@@ -168,15 +169,22 @@ def add_to_dnc(session: Session, phone: str, *, reason: str, source: str) -> DNC
     distributors = session.scalars(
         select(Distributor).where(or_(Distributor.phone == key, Distributor.alt_phone == key))
     ).all()
+    canceled: dict[int, int] = {}
     for d in distributors:
         funnel.advance_status(d, EmpanelmentStatus.DO_NOT_CALL)
         if not d.dnc_reason and reason:
             d.dnc_reason = reason[:200]
+        pending = session.scalars(
+            select(Callback).where(Callback.distributor_id == d.id, Callback.status == CallbackStatus.PENDING)
+        ).all()
+        for cb in pending:
+            cb.status = CallbackStatus.CANCELED
+        canceled[d.id] = len(pending)
 
     detail = {"phone": mask_phone(key), "reason": reason, "source": source, "new_entry": new_entry}
     if distributors:
         for d in distributors:
-            audit(session, "dnc_added", distributor_id=d.id, **detail)
+            audit(session, "dnc_added", distributor_id=d.id, callbacks_canceled=canceled[d.id], **detail)
     else:
         audit(session, "dnc_added", **detail)
     session.flush()
