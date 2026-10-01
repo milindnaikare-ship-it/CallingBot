@@ -94,6 +94,11 @@ class NFOInfo(BaseModel):
     sid_url: str | None = None
     kim_url: str | None = None
     mandatory_disclaimer: str = DEFAULT_DISCLAIMER
+    # Spoken disclaimer per language code (e.g. "hi-IN"); falls back to mandatory_disclaimer.
+    mandatory_disclaimer_translations: dict[str, str] = Field(default_factory=dict)
+
+    def disclaimer(self, language: str | None) -> str:
+        return self.mandatory_disclaimer_translations.get(language or "", self.mandatory_disclaimer)
 
     @model_validator(mode="after")
     def _dates_ordered(self) -> NFOInfo:

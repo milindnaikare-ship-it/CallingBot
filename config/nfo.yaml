@@ -41,3 +41,5 @@ sid_url: "https://www.sample-mf.example/nfo/sid.pdf"                    # TODO
 kim_url: "https://www.sample-mf.example/nfo/kim.pdf"                    # TODO
 mandatory_disclaimer: >-
   Mutual Fund investments are subject to market risks, read all scheme related documents carefully.
+mandatory_disclaimer_translations:
+  hi-IN: "म्यूचुअल फंड निवेश बाज़ार जोखिमों के अधीन हैं, योजना संबंधी सभी दस्तावेज़ ध्यान से पढ़ें।"

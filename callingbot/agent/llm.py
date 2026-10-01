@@ -231,6 +231,7 @@ def refusal_reply() -> LLMResult:
 def build_llm(settings: Settings) -> LLMClient:
     if settings.llm_provider == "fake":
         from callingbot.agent.demo_llm import DemoLLM
+        from callingbot.knowledge import load_knowledge
 
-        return DemoLLM()
+        return DemoLLM(load_knowledge(settings.config_dir))
     return AnthropicLLM(settings)
