@@ -1,0 +1,16 @@
+# Dialer policy. Times are in IST (Asia/Kolkata).
+# TRAI rules restrict when promotional calls may be made; we default to a stricter business-hours
+# window. Confirm the final window with Compliance (see docs/COMPLIANCE.md).
+
+calling_days: [0, 1, 2, 3, 4, 5]   # Monday=0 ... Saturday=5 (no Sundays)
+window_start: "10:00"
+window_end: "19:00"
+holidays:                          # TODO: add the full 2026 holiday list your AMC follows
+  - 2026-10-02                     # Gandhi Jayanti
+  - 2026-12-25                     # Christmas
+max_attempts: 3                    # call attempts per distributor per campaign
+retry_backoff_minutes: [180, 1440] # wait 3h after 1st unanswered attempt, then 1 day
+max_concurrent_calls: 3
+calls_per_minute: 6
+leave_voicemail: false
+voicemail_message: null
