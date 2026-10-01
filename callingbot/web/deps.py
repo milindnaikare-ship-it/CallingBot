@@ -54,8 +54,8 @@ log = logging.getLogger(__name__)
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _DEFAULT_PORTS = (":80", ":443")
 
-# auto_error=False so the 401 carries our realm and the same response whether the header is
-# missing or wrong (no hint about which part failed).
+# auto_error=False so a missing header gets our 401 (with realm); a malformed one is rejected with
+# 401 by HTTPBasic itself. Wrong username and wrong password get the same response.
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -134,7 +134,7 @@ def _unauthorized() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required",
-        headers={"WWW-Authenticate": 'Basic realm="CallingBot admin", charset="UTF-8"'},
+        headers={"WWW-Authenticate": 'Basic realm="CallingBot admin"'},
     )
 
 
@@ -195,9 +195,7 @@ def check_same_origin(request: Request) -> None:
     raise HTTPException(status.HTTP_403_FORBIDDEN, f"Cross-site request rejected ({which} mismatch)")
 
 
-def require_admin(
-    request: Request, credentials: HTTPBasicCredentials | None = Depends(_basic)
-) -> str:
+def require_admin(request: Request, credentials: HTTPBasicCredentials | None = Depends(_basic)) -> str:
     """HTTP Basic admin login plus the CSRF check for state-changing requests. Returns the username."""
     if credentials is None or not _credentials_ok(request.app.state.settings, credentials):
         raise _unauthorized()

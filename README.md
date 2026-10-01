@@ -45,7 +45,9 @@ want to talk. Every call is logged with a transcript, an outcome and an audit tr
 **Conversation**
 - Natural, turn-based voice conversation in **English and Hindi** (more Indian languages can be
   switched on in `config/amc.yaml` once their scripts are approved). The distributor can switch
-  language mid-call.
+  language mid-call. The shipped POC configuration enables **English only**; switch Hindi on by
+  adding an `hi-IN` entry (voice, speech language, approved greeting) to `languages` in
+  `config/amc.yaml`.
 - A **pre-approved greeting** that is never AI-generated. It says the caller is a virtual
   assistant, names the AMC, announces that the call may be recorded and confirms who it is
   speaking to.
@@ -257,13 +259,13 @@ and the dialer after you change them.
 |---|---|
 | `callingbot init-db` | Creates the database tables (safe to run again). |
 | `callingbot check-config` | Validates `.env` settings and `config/*.yaml`, and reports problems. |
-| `callingbot import-distributors PATH [--source NAME] [--campaign NAME] [--no-update]` | Imports a distributor CSV. `--source` labels where the list came from. `--campaign` also adds the imported distributors to that campaign. `--no-update` leaves existing distributors (same ARN) unchanged. |
+| `callingbot import-distributors PATH [--source NAME] [--campaign NAME] [--no-update]` | Imports a distributor CSV. `--source` labels where the list came from. `--campaign` also adds the imported distributors to that campaign. `--no-update` leaves distributors already in the database (same ARN, or same mobile number for rows without an ARN) unchanged. |
 | `callingbot campaign create NAME [--description TEXT]` | Creates a campaign (in draft). |
 | `callingbot campaign add NAME` | Adds **all eligible distributors** to the campaign. Opted-out, already empanelled and wrong-number distributors are never added. |
 | `callingbot campaign start NAME` / `pause NAME` / `list` | Starts or pauses dialling, or lists campaigns. |
 | `callingbot run-dialer --campaign NAME [--once] [--interval SECONDS]` | Dials due contacts of an active campaign. `--once` does one pass and exits (useful with cron). |
 | `callingbot simulate [--arn ARN \| --phone NUMBER] [--language CODE]` | Simulated conversation in the terminal, as a given distributor and language. |
-| `callingbot test-call (--phone NUMBER \| --arn ARN) [--ignore-window]` | Phone one imported distributor now, outside any campaign - for closed POC testing (see [docs/TWILIO_SETUP.md](docs/TWILIO_SETUP.md)). |
+| `callingbot test-call (--phone NUMBER \| --arn ARN) [--ignore-window] [--language CODE]` | Phone one imported distributor now, outside any campaign - for closed POC testing (see [docs/TWILIO_SETUP.md](docs/TWILIO_SETUP.md)). |
 | `callingbot serve [--host HOST] [--port PORT] [--reload]` | Runs the web app (`uvicorn --factory callingbot.web.app:create_app`). |
 | `callingbot stats [--campaign NAME]` | Prints funnel and call statistics. |
 | `callingbot export-leads PATH [--campaign NAME]` | Exports leads (distributors with a positive outcome, such as interested, link sent or callback requested) to a CSV for the RM team. |
@@ -273,7 +275,7 @@ so an AMFI export works as-is:
 
 | Field | Accepted headers |
 |---|---|
-| ARN (required) | `ARN`, `ARN Code`, `ARN No`, `ARN Number`, `AMFI Registration Number` |
+| ARN (optional, validated when present; rows without one are matched by mobile number) | `ARN`, `ARN Code`, `ARN No`, `ARN Number`, `AMFI Registration Number` |
 | Name (required) | `Name`, `ARN Holder's Name`, `ARN Holder Name`, `Distributor Name`, `Contact Person` |
 | Phone (required) | `Phone`, `Mobile`, `Mobile No`, `Mobile Number`, `Contact Number`, `Telephone (O)`, `Telephone (R)`. The first valid Indian mobile becomes the phone, and the next different one becomes the alternate phone. |
 | Alternate phone | `Alt Phone`, `Alternate Phone`, `Alternate Mobile` |

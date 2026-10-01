@@ -172,7 +172,9 @@ def test_turn_with_speech_returns_next_utterance(client, settings, kb, new_call)
     assert kb.nfo.scheme_name in reply and "Are you already empanelled with us?" in reply
 
     with db.new_session() as s:
-        heard = s.scalars(select(Turn).where(Turn.call_id == call_id, Turn.role == TurnRole.DISTRIBUTOR)).all()
+        heard = s.scalars(
+            select(Turn).where(Turn.call_id == call_id, Turn.role == TurnRole.DISTRIBUTOR)
+        ).all()
     assert [t.text for t in heard] == ["yes speaking"] and heard[0].meta == {"confidence": 0.92}
 
 
@@ -280,10 +282,15 @@ def test_simulator_webhooks_work_outside_prod_but_not_in_prod(make_client, setti
     assert response.status_code == 200 and response.headers["content-type"].startswith("application/json")
     assert response.json()["action"] == "gather" and "virtual assistant" in response.json()["say"][0]
 
-    prod = make_client(provider=SimulatorProvider(), settings_=settings.model_copy(update={"app_env": "prod"}))
+    prod = make_client(
+        provider=SimulatorProvider(), settings_=settings.model_copy(update={"app_env": "prod"})
+    )
     call_id = new_call(provider="simulator", sid=None)
     assert prod.post(f"/telephony/simulator/answer/{call_id}", data={}).status_code == 404
-    assert prod.post(f"/telephony/simulator/status/{call_id}", data={"CallStatus": "completed"}).status_code == 404
+    assert (
+        prod.post(f"/telephony/simulator/status/{call_id}", data={"CallStatus": "completed"}).status_code
+        == 404
+    )
 
 
 # ------------------------------------------------------------------------------------- unknown calls
@@ -291,7 +298,9 @@ def test_simulator_webhooks_work_outside_prod_but_not_in_prod(make_client, setti
 
 @pytest.mark.parametrize("kind", ["answer", "turn"])
 def test_unknown_call_gets_apology_and_hangup(client, settings, kind):
-    root = twiml(post(client, settings, f"/telephony/twilio/{kind}/999", {"CallSid": "CA9", "SpeechResult": "hi"}))
+    root = twiml(
+        post(client, settings, f"/telephony/twilio/{kind}/999", {"CallSid": "CA9", "SpeechResult": "hi"})
+    )
     assert root.find("Gather") is None and root.find("Hangup") is not None
     assert says(root) == ["Sorry, this call cannot be continued. Goodbye."]
 
@@ -309,7 +318,9 @@ def test_webhook_for_a_different_call_is_treated_as_unknown(client, settings, ne
 
 
 def test_status_for_unknown_call_returns_204(client, settings):
-    response = post(client, settings, "/telephony/twilio/status/12345", {"CallSid": "CA9", "CallStatus": "completed"})
+    response = post(
+        client, settings, "/telephony/twilio/status/12345", {"CallSid": "CA9", "CallStatus": "completed"}
+    )
     assert response.status_code == 204
 
 
@@ -354,7 +365,11 @@ def test_unexpected_engine_crash_is_caught(client, settings, kb, new_call, monke
     assert call.summary is None and call.engine_state["ended"] is True and call.pending_action == "hangup"
     assert "database went away" in call.error
     (event,) = audits("webhook_error")
-    assert event.call_id == call_id and event.detail["stage"] == "turn" and "RuntimeError" in event.detail["error"]
+    assert (
+        event.call_id == call_id
+        and event.detail["stage"] == "turn"
+        and "RuntimeError" in event.detail["error"]
+    )
 
     # A retried webhook does not restart the conversation.
     monkeypatch.undo()
@@ -378,6 +393,25 @@ def test_crash_during_opt_out_still_honours_it(client, settings, new_call, monke
     assert call.distributor.do_not_call and call.distributor.status == EmpanelmentStatus.DO_NOT_CALL
     with db.new_session() as s:
         assert compliance.is_dnc(s, "+919812345678")
+
+
+def test_opt_out_is_not_confirmed_when_it_could_not_be_stored(client, settings, new_call, monkeypatch):
+    call_id = new_call()
+    twiml(answer(client, settings, call_id))
+
+    def crash(self, call, speech_text, *, confidence=None):
+        raise RuntimeError("boom")
+
+    def dnc_down(*args, **kwargs):
+        raise RuntimeError("dnc table locked")
+
+    monkeypatch.setattr(ConversationEngine, "handle_input", crash)
+    monkeypatch.setattr(compliance, "add_to_dnc", dnc_down)
+    root = twiml(turn(client, settings, call_id, "don't call me again"))
+    assert says(root) == [
+        "I'm sorry, we are facing a technical issue and need to end this call. Thank you for your time."
+    ]
+    assert root.find("Hangup") is not None
 
 
 def test_answer_crash_is_caught(client, settings, new_call, monkeypatch):

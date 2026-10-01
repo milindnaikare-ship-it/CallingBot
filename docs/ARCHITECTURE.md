@@ -80,7 +80,8 @@ callingbot/
   directly except manual admin edits).
 * Audit compliance-relevant events with `models.audit(session, kind, ...)`. Event kinds used:
   `disclosure_played`, `dnc_added`, `opt_out`, `compliance_flag`, `llm_error`, `llm_refusal`,
-  `link_sent`, `callback_scheduled`, `transfer`, `dial_skipped`, `dial_failed`, `call_finalized`.
+  `link_sent`, `callback_scheduled`, `request_logged`, `transfer`, `dial_skipped`, `dial_failed`,
+  `call_finalized`, `webhook_error`, `test_call`, `manual_status_change`, `message_marked_sent`.
 * Inject `now_utc` / `now` callables for testability — no hidden `datetime.now()` in logic.
 * No network calls in tests: providers are exercised with `httpx.MockTransport` or fakes.
 
@@ -111,7 +112,8 @@ class ScreenResult:
     ok: bool
     violations: list[str]   # rule ids, e.g. "guaranteed_returns", "return_projection", "risk_free", "advice"
 
-def screen_bot_utterance(text: str) -> ScreenResult
+def screen_bot_utterance(text: str, approved: Iterable[str] = ()) -> ScreenResult
+    # approved = KnowledgeBase.approved_texts(): sentences reproduced verbatim are not flagged
 def safe_reply(language: str) -> str     # neutral replacement when a reply is blocked (en-IN / hi-IN)
 def detect_opt_out(text: str) -> bool    # deterministic EN/Hindi/Hinglish "don't call me again" detector
 ```
@@ -131,14 +133,16 @@ def empanelment_target_url(kb: KnowledgeBase, distributor: Distributor, call_id:
 ```python
 # messaging/service.py
 class Messenger:
-    def __init__(self, senders: dict[MessageChannel, MessageSender]): ...
+    def __init__(self, senders: Mapping[MessageChannel, MessageSender], *,
+                 now: Callable[[], datetime] = utcnow): ...
     def send(self, session: Session, *, channel: MessageChannel, to: str, body: str,
              subject: str | None = None, link: str | None = None,
              distributor_id: int | None = None, call_id: int | None = None,
              template_vars: dict[str, str] | None = None) -> OutboundMessage
         # always persists an OutboundMessage row (QUEUED for outbox, SENT, or FAILED); never raises
         # for provider errors; flushes but does not commit.
-def build_messenger(settings: Settings) -> Messenger
+def build_messenger(settings: Settings, *, http_client: httpx.Client | None = None) -> Messenger
+    # outbox by default; a real provider without its credentials raises ValueError naming them
 # messaging/outbox.py: OutboxSender(channel)        -> SendResult(ok=True, queued_only=True)
 # messaging/sms_twilio.py: TwilioSMSSender(settings, http_client: httpx.Client | None = None)
 # messaging/whatsapp_meta.py: MetaWhatsAppSender(settings, http_client=None)   # template message
@@ -157,6 +161,8 @@ def build_call_context(kb: KnowledgeBase, distributor: Distributor, call: Call, 
 
 # agent/tools.py
 TOOL_DEFINITIONS: list[dict]     # Messages API tool dicts, "strict": True, additionalProperties False
+def build_tool_definitions(kb: KnowledgeBase | None = None) -> list[dict]
+    # same tools; with kb, language parameters are an enum of kb's language codes (the engine uses this)
 @dataclass
 class ToolContext:
     session: Session; call: Call; distributor: Distributor; kb: KnowledgeBase
@@ -214,18 +220,21 @@ def normalize_euin(raw: str | None) -> str | None          # "e123456" -> "E1234
 class ImportReport:
     created: int = 0; updated: int = 0; skipped: int = 0
     errors: list[tuple[int, str]] = field(default_factory=list)   # (row number, reason)
-def import_distributors_csv(session: Session, source_file: TextIO | Path | str, *, source: str,
-                            update_existing: bool = True) -> ImportReport     # flushes, caller commits
+    # also: warnings: list[tuple[int, str]], dnc_marked: int, distributor_ids: list[int]
+def import_distributors_csv(session: Session, source_file: TextIO | BinaryIO | Path | str, *, source: str,
+                            update_existing: bool = True) -> ImportReport     # CSV or .xlsx; flushes, caller commits
 
 # services/lifecycle.py
 def create_call(session: Session, *, distributor: Distributor, provider: str,
                 campaign: Campaign | None = None, contact: CampaignContact | None = None,
                 language: str | None = None) -> Call                        # flushes (call.id available)
 def apply_status_update(session: Session, call: Call, update: CallStatusUpdate, *,
-                        kb: KnowledgeBase, now_utc: datetime) -> None
+                        kb: KnowledgeBase, now_utc: datetime, tz: str = "Asia/Kolkata") -> None
     # idempotent; never moves a terminal call back to non-terminal; on first transition to a
     # terminal status calls finalize_call
-def finalize_call(session: Session, call: Call, *, kb: KnowledgeBase, now_utc: datetime) -> None
+def finalize_call(session: Session, call: Call, *, kb: KnowledgeBase, now_utc: datetime,
+                  tz: str = "Asia/Kolkata") -> None
+    # tz = business timezone (settings.timezone) used to place retries inside the calling window
     # idempotent (engine_state["finalized"]); default outcome; funnel status; contact retry/DONE; audit
 
 # services/dialer.py
@@ -249,9 +258,11 @@ def campaign_stats(session, campaign_id: int | None = None) -> dict
 # web/app.py
 def create_app(settings: Settings | None = None, *, llm: LLMClient | None = None,
                messenger: Messenger | None = None, provider: TelephonyProvider | None = None) -> FastAPI
-    # stores settings/kb/llm/messenger/provider on app.state; init_db() on startup
+    # stores settings/kb/llm/messenger/provider/templates/clock on app.state; init_db() in the factory.
+    # app.state.clock (naive-UTC callable) is the "now" of every route and engine; tests pin it.
 # web/deps.py - FastAPI dependencies: db_session, get_app_settings, get_kb, get_llm, get_messenger,
-#               get_provider, require_admin (HTTP Basic, secrets.compare_digest), make_engine
+#               get_provider, get_clock, require_admin (HTTP Basic, secrets.compare_digest, plus a
+#               same-origin CSRF check on state-changing requests), make_engine(session, request)
 ```
 
 ## 5. Engine behaviour (summary)

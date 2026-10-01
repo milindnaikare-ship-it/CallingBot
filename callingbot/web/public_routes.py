@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import closing
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -21,7 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from callingbot import links
+from callingbot import db, links
 from callingbot.models import Call, Distributor, LinkClick
 from callingbot.web.deps import db_session
 
@@ -41,10 +42,12 @@ DBSession = Annotated[Session, Depends(db_session)]
 
 
 @router.get("/healthz")
-def healthz(session: DBSession):
+def healthz():
     """Liveness + database reachability, for the load balancer / container health check."""
+    # Its own session (not the dependency) so an unreachable database is a 503, not a 500.
     try:
-        session.execute(text("SELECT 1"))
+        with closing(db.new_session()) as session:
+            session.execute(text("SELECT 1"))
     except Exception:
         log.exception("Health check: database unavailable")
         return JSONResponse({"status": "unavailable"}, status_code=503)
@@ -54,7 +57,9 @@ def healthz(session: DBSession):
 @router.get("/r/{token}")
 def tracked_link(token: str, request: Request, session: DBSession):
     state = request.app.state
-    parsed = links.parse_link_token(state.settings.secret_key, token) if len(token) <= _MAX_TOKEN_CHARS else None
+    parsed = (
+        links.parse_link_token(state.settings.secret_key, token) if len(token) <= _MAX_TOKEN_CHARS else None
+    )
     distributor = session.get(Distributor, parsed[0]) if parsed else None
     if parsed is None or distributor is None:
         return _invalid_link(request)

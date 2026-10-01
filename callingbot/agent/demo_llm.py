@@ -309,8 +309,10 @@ class DemoLLM(LLMClient):
             return f"आप empanelment हमारे भेजे गए link से ऑनलाइन पूरा कर सकते हैं। {self._link_offer(view)}"
         lead = ""
         if self.kb.amc.distributor_value_props:
+            # Approved wording, spoken verbatim: it may be a phrase ("A dedicated RM ...") or a full
+            # sentence starting with a brand name, so it is neither re-cased nor fitted into ours.
             prop = " ".join(self.kb.amc.distributor_value_props[0].split()).rstrip(".")
-            lead = f"We offer our partners {prop[:1].lower()}{prop[1:]}. "
+            lead = f"Here's why partners work with us: {prop}. "
         return (
             f"{lead}You can complete empanelment online through the link we send you. "
             f"{self._link_offer(view, channel_hint=True)}"

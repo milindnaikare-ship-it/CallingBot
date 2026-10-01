@@ -65,6 +65,7 @@ def create_app(
     settings = settings or get_settings()
     _configure_logging(settings.log_level)
     _check_production_settings(settings)
+    _warn_about_admin_credentials(settings)
 
     # Synchronously, not in a lifespan hook: tests use the app without running startup events,
     # and a missing table should fail here, not on the first webhook of a live call.
@@ -139,6 +140,14 @@ def _check_production_settings(settings: Settings) -> None:
         problems.append(f"PUBLIC_BASE_URL must be an https:// URL, got {settings.base_url!r}")
     if problems:
         raise RuntimeError("Refusing to start with APP_ENV=prod: " + "; ".join(problems))
+
+
+def _warn_about_admin_credentials(settings: Settings) -> None:
+    # FastAPI's HTTPBasic decodes credentials as ASCII, so a non-ASCII login can never succeed.
+    if not (settings.admin_username.isascii() and settings.admin_password.isascii()):
+        log.warning(
+            "ADMIN_USERNAME / ADMIN_PASSWORD contain non-ASCII characters; HTTP Basic login will fail"
+        )
 
 
 def _build_templates(settings: Settings) -> Jinja2Templates:

@@ -12,6 +12,7 @@ from conftest import FIXTURE_CONFIG, IN_WINDOW_UTC, ROOT
 from sqlalchemy import func, select
 
 from callingbot import cli, db
+from callingbot.knowledge import load_knowledge
 from callingbot.models import (
     Call,
     CallOutcome,
@@ -492,6 +493,24 @@ def test_check_config_invalid_yaml_values(env, capsys, monkeypatch, tmp_path):
     assert "window_end must be after window_start" in err
 
 
+@pytest.mark.parametrize("app_env", ["dev", "prod"])
+def test_check_config_with_the_shipped_config(env, capsys, monkeypatch, app_env):
+    # config/ leaves optional facts null until the SID is final (closing date, riskometer, website);
+    # check-config is the second command of the README quickstart and must not crash on them.
+    monkeypatch.setenv("CONFIG_DIR", str(ROOT / "config"))
+    monkeypatch.setenv("APP_ENV", app_env)
+    get_settings.cache_clear()
+    code, out, err = run(capsys, "check-config")
+    assert code == 0, err
+    assert "Traceback" not in out + err
+    kb = load_knowledge(ROOT / "config")
+    assert kb.nfo.scheme_name in out
+    if kb.nfo.nfo_close_date is None:
+        assert "closes not set yet" in out
+    if kb.nfo.pending_fields():
+        assert "Pending:" in out
+
+
 def test_check_config_missing_files(env, capsys, monkeypatch, tmp_path):
     monkeypatch.setenv("CONFIG_DIR", str(tmp_path / "nowhere"))
     get_settings.cache_clear()
@@ -567,6 +586,19 @@ def test_simulate_conversation_with_demo_llm(env, capsys, monkeypatch):
             assert "link: " in out
 
     query(check)
+
+
+def test_simulate_uses_one_clock_for_the_whole_call(env, capsys, monkeypatch):
+    # answered_at and the engine's "now" must come from the same clock: with the CLI clock a year
+    # behind the real one, a mixed-clock engine saw a year-long call and force-closed it on turn 1.
+    monkeypatch.setattr(cli, "utcnow", lambda: IN_WINDOW_UTC - timedelta(days=364))
+    _scripted_input(monkeypatch, ["Yes speaking", "No, not yet empanelled"])
+    code, out, _ = run(capsys, "simulate")
+    assert code == 0
+    assert "Our relationship team will follow up" not in out  # the engine's forced-close line
+    call = query(lambda s: s.scalars(select(Call)).one())
+    assert call.turn_count == 2
+    assert call.answered_at == IN_WINDOW_UTC - timedelta(days=364)
 
 
 def test_simulate_reuses_demo_distributor_and_honours_language(env, capsys, monkeypatch):
@@ -651,6 +683,25 @@ def test_test_call_places_one_call(twilio_env, capsys):
     assert call.provider == "twilio" and call.status == CallStatus.INITIATED and call.campaign_id is None
     assert call.provider_call_id == twilio_env.placed[0]["provider_call_id"]
     assert "press any key" in out and "+91******1234" in out
+
+
+def test_test_call_does_not_overwrite_a_status_webhook(twilio_env, capsys, monkeypatch):
+    # Twilio may post the "answered" status to the web app before place_call returns here.
+    def place_and_answer(*, to_number: str, call_id: int):
+        result = SimulatorProvider.place_call(twilio_env, to_number=to_number, call_id=call_id)
+        other = db.new_session()  # the web app's process
+        call = other.get(Call, call_id)
+        call.status, call.provider_call_id = CallStatus.IN_PROGRESS, result.provider_call_id
+        other.commit()
+        other.close()
+        return result
+
+    monkeypatch.setattr(twilio_env, "place_call", place_and_answer)
+    code, _, err = run(capsys, "test-call", "--phone", "9876501234")
+    assert code == 0, err
+    call = query(lambda s: s.scalars(select(Call)).one())
+    assert call.status == CallStatus.IN_PROGRESS
+    assert call.provider_call_id == twilio_env.placed[0]["provider_call_id"]
 
 
 def test_test_call_respects_window_unless_overridden(twilio_env, capsys, monkeypatch):

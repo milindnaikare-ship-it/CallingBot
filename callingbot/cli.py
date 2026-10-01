@@ -99,6 +99,8 @@ _MODEL_FILES = {
     "NFOInfo": "nfo.yaml",
     "FAQ": "faq.yaml",
     "CampaignPolicy": "campaign.yaml",
+    "CallScript": "script.yaml",
+    "ScriptStep": "script.yaml",
 }
 
 
@@ -205,7 +207,8 @@ def _config_warnings(settings: Settings, kb: KnowledgeBase) -> list[str]:
             warnings.append(
                 "SECRET_KEY is still the default; tracking links can be forged. Set a long random value."
             )
-        if "example" in kb.amc.empanelment_url_template or "example" in kb.amc.website:
+        # website is optional (null in amc.yaml until the AMC supplies it).
+        if "example" in kb.amc.empanelment_url_template or "example" in (kb.amc.website or ""):
             warnings.append("config/amc.yaml still contains placeholder (example.*) URLs.")
     if settings.llm_provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         warnings.append(
@@ -232,7 +235,8 @@ def _config_warnings(settings: Settings, kb: KnowledgeBase) -> list[str]:
     except ValueError as exc:
         warnings.append(str(exc))
     today = to_local(utcnow(), settings.timezone).date()
-    if kb.nfo.nfo_close_date < today:
+    # The closing date is optional: it stays null until the SID is final.
+    if kb.nfo.nfo_close_date is not None and kb.nfo.nfo_close_date < today:
         warnings.append(f"The NFO closed on {kb.nfo.nfo_close_date:%d %b %Y}; update config/nfo.yaml.")
     return warnings
 
@@ -246,8 +250,13 @@ def cmd_check_config(args: argparse.Namespace, settings: Settings) -> int:
     print(f"Configuration loaded from {settings.config_dir} (APP_ENV={settings.app_env})")
     print(f"  AMC:        {amc.name} ({amc.short_name}), SEBI reg. {amc.sebi_registration or '-'}")
     print(f"  Assistant:  {amc.bot_name}; languages {languages}; default {amc.default_language}")
-    print(f"  NFO:        {nfo.scheme_name} - {nfo.category}, riskometer {nfo.riskometer}")
-    print(f"  NFO dates:  opens {nfo.nfo_open_date:%d %b %Y}, closes {nfo.nfo_close_date:%d %b %Y}")
+    closes = f"{nfo.nfo_close_date:%d %b %Y}" if nfo.nfo_close_date else "not set yet"
+    print(f"  NFO:        {nfo.scheme_name} - {nfo.category}, riskometer {nfo.riskometer or 'not set yet'}")
+    print(f"  NFO dates:  opens {nfo.nfo_open_date:%d %b %Y}, closes {closes}")
+    pending = nfo.pending_fields()
+    if pending:
+        # Not a problem by itself: the bot says the team will share these instead of guessing.
+        print(f"  Pending:    {', '.join(pending)} (the bot says the team will share these)")
     print(f"  FAQs:       {len(kb.faqs)}")
     print(
         f"  Calling:    {days} {policy.window_start:%H:%M}-{policy.window_end:%H:%M} ({settings.timezone}), "
@@ -534,6 +543,7 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
             CallStatusUpdate(provider_call_id=None, status=CallStatus.IN_PROGRESS, answered_by="human"),
             kb=kb,
             now_utc=utcnow(),
+            tz=settings.timezone,
         )
         session.commit()
         print(
@@ -542,7 +552,11 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
             "Press Enter to stay silent, type /quit to hang up."
         )
 
-        engine = ConversationEngine(session=session, kb=kb, settings=settings, llm=llm, messenger=messenger)
+        # Same clock as answered_at above: the engine's turn/time limits subtract the two, so mixing
+        # clocks would end (or never end) the call at the wrong moment.
+        engine = ConversationEngine(
+            session=session, kb=kb, settings=settings, llm=llm, messenger=messenger, now=utcnow
+        )
         response = _start_in_language(session, engine, call, distributor, args.language)
         _print_bot(response)
         while response.action == "gather":
@@ -562,6 +576,7 @@ def cmd_simulate(args: argparse.Namespace, settings: Settings) -> int:
             CallStatusUpdate(provider_call_id=call.provider_call_id, status=CallStatus.COMPLETED),
             kb=kb,
             now_utc=utcnow(),
+            tz=settings.timezone,
         )
         session.commit()
         _print_call_summary(session, call, distributor)
@@ -688,12 +703,22 @@ def cmd_test_call(args: argparse.Namespace, settings: Settings) -> int:
                 CallStatusUpdate(provider_call_id=None, status=CallStatus.FAILED),
                 kb=kb,
                 now_utc=utcnow(),
+                tz=settings.timezone,
             )
             call.error = str(exc)
             session.commit()  # keep the failure on record; session_scope rolls back on exceptions
             raise CLIError(f"the provider rejected the call: {exc}") from exc
-        call.provider_call_id = result.provider_call_id
-        call.status = result.status
+        # The answer/status webhooks may already have moved the call on (in the web app's process);
+        # merge forward-only, as the dialer does, instead of overwriting their status.
+        session.refresh(call)
+        apply_status_update(
+            session,
+            call,
+            CallStatusUpdate(provider_call_id=result.provider_call_id, status=result.status),
+            kb=kb,
+            now_utc=utcnow(),
+            tz=settings.timezone,
+        )
         print(
             f"Calling {distributor.name} on {mask_phone(distributor.phone)} - call #{call.id} "
             f"({provider.name} id {result.provider_call_id})."
@@ -814,7 +839,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--campaign", help="also add the imported distributors to this campaign (created if missing)"
     )
     p.add_argument(
-        "--no-update", action="store_true", help="leave existing distributors (same ARN) unchanged"
+        "--no-update",
+        action="store_true",
+        help="leave distributors already in the database (same ARN, else same mobile) unchanged",
     )
     p.set_defaults(func=cmd_import_distributors)
 

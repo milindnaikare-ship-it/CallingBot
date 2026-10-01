@@ -23,6 +23,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import zipfile
 from contextlib import closing
 from datetime import datetime
@@ -107,11 +108,13 @@ def _get_or_404(session: Session, model, object_id: int):
     return obj
 
 
+_SAFE_NEXT = re.compile(r"/(?![/\\])[A-Za-z0-9/_.~%=&?-]*")
+
+
 def _safe_next(value: str | None, default: str) -> str:
-    # Only same-site relative paths: never an open redirect to another host ("//evil", "https://").
-    if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
-        return value
-    return default
+    # Only plain same-site paths. Anything else could become an open redirect: "//evil.example",
+    # "/\\evil.example", or "/\t/evil.example" (browsers drop tabs and newlines from URLs).
+    return value if value and _SAFE_NEXT.fullmatch(value) else default
 
 
 def _like(q: str) -> str:
@@ -266,7 +269,10 @@ def distributor_detail(request: Request, distributor_id: int, session: DBSession
         .limit(DETAIL_ROWS)
     ).all()
     callbacks = session.scalars(
-        select(Callback).where(Callback.distributor_id == d.id).order_by(Callback.id.desc()).limit(DETAIL_ROWS)
+        select(Callback)
+        .where(Callback.distributor_id == d.id)
+        .order_by(Callback.id.desc())
+        .limit(DETAIL_ROWS)
     ).all()
     events = session.scalars(
         select(AuditEvent)
@@ -513,7 +519,9 @@ def _create_campaign(request: Request, form: dict[str, str]):
     with closing(db.new_session()) as session:
         exists = session.scalar(select(Campaign.id).where(func.lower(Campaign.name) == name.lower()))
         if exists is not None:
-            return redirect_with_flash(request, "/campaigns", f"A campaign named {name!r} already exists.", "error")
+            return redirect_with_flash(
+                request, "/campaigns", f"A campaign named {name!r} already exists.", "error"
+            )
         session.add(Campaign(name=name, description=description, status=CampaignStatus.DRAFT))
         session.commit()
     return redirect_with_flash(
@@ -661,7 +669,9 @@ def call_detail(request: Request, call_id: int, session: DBSession):
     messages = session.scalars(
         select(OutboundMessage).where(OutboundMessage.call_id == call.id).order_by(OutboundMessage.id)
     ).all()
-    callbacks = session.scalars(select(Callback).where(Callback.call_id == call.id).order_by(Callback.id)).all()
+    callbacks = session.scalars(
+        select(Callback).where(Callback.call_id == call.id).order_by(Callback.id)
+    ).all()
     events = session.scalars(
         select(AuditEvent).where(AuditEvent.call_id == call.id).order_by(AuditEvent.id)
     ).all()
@@ -722,7 +732,9 @@ def _mark_callback_done(request: Request, form: dict[str, str], callback_id: int
     with closing(db.new_session()) as session:
         cb = _get_or_404(session, Callback, callback_id)
         if cb.status != CallbackStatus.PENDING:
-            return redirect_with_flash(request, back, f"Callback #{cb.id} is already {cb.status.value}.", "warn")
+            return redirect_with_flash(
+                request, back, f"Callback #{cb.id} is already {cb.status.value}.", "warn"
+            )
         cb.status = CallbackStatus.DONE
         session.commit()
     return redirect_with_flash(request, back, f"Callback #{callback_id} marked done.")

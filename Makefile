@@ -3,7 +3,7 @@
 # Examples:
 #   make install
 #   make run                                  # admin dashboard on http://127.0.0.1:8000
-#   make simulate ARN=ARN-999901 LANGUAGE_CODE=hi-IN
+#   make simulate ARN=ARN-999901 LANGUAGE_CODE=en-IN      # any code enabled in config/amc.yaml
 #   make dialer CAMPAIGN="NFO Launch"
 
 PYTHON ?= python3
@@ -28,7 +28,7 @@ help:
 	@echo "make lint       ruff lint + format check (what CI runs)"
 	@echo "make format     auto-format and auto-fix lint issues"
 	@echo "make run        start the web app with auto-reload (HOST=$(HOST) PORT=$(PORT))"
-	@echo "make simulate   talk to the bot in the terminal (optional ARN=..., LANGUAGE_CODE=hi-IN)"
+	@echo "make simulate   talk to the bot in the terminal (optional ARN=..., LANGUAGE_CODE=en-IN)"
 	@echo "make dialer     run the dialer for CAMPAIGN=\"$(CAMPAIGN)\""
 
 install:

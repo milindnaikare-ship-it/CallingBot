@@ -314,3 +314,33 @@ def test_tool_ids_are_unique_within_a_call(session, run_call):
     ]
     assert len(ids) == 3 and len(set(ids)) == 3  # send, record_outcome, end_call
     assert all(i.startswith("toolu_demo_") for i in ids)
+
+
+def test_value_proposition_is_spoken_verbatim_with_the_shipped_config(session, settings, make_distributor):
+    # config/amc.yaml phrases its value propositions as full sentences that start with the brand
+    # name; the demo bot must speak them as approved, not re-cased or fitted into its own sentence.
+    from conftest import ROOT
+
+    from callingbot.knowledge import load_knowledge
+
+    real_kb = load_knowledge(ROOT / "config")
+    prop = " ".join(real_kb.amc.distributor_value_props[0].split()).rstrip(".")
+    d = make_distributor()
+    call = Call(distributor_id=d.id, provider="simulator", status=CallStatus.RINGING)
+    session.add(call)
+    session.flush()
+    engine = ConversationEngine(
+        session=session,
+        kb=real_kb,
+        settings=settings,
+        llm=DemoLLM(real_kb),
+        messenger=build_messenger(settings),
+        now=lambda: IN_WINDOW_UTC,
+    )
+    engine.start(call, answered_by="human")
+    engine.handle_input(call, "Yes speaking")
+    response = engine.handle_input(call, "No, not yet")
+    spoken = " ".join(response.say)
+    assert f"{prop}." in spoken
+    assert screen_bot_utterance(spoken, approved=real_kb.approved_texts()).ok
+    assert not any(t.flagged for t in call.turns)

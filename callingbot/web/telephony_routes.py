@@ -232,30 +232,35 @@ def _fail(
     try:
         session.rollback()
         call = session.get(Call, call_id)
+        planned = say
         if call is not None:
             language = call.language or language
-            opted_out = speech_text is not None and compliance.detect_opt_out(speech_text)
-            if opted_out:
+            say = [_line(_APOLOGY, language)]
+            if speech_text is not None and compliance.detect_opt_out(speech_text):
                 _honour_opt_out(session, call)
-                say = [script("opt_out_confirm", language)]
+                planned = [script("opt_out_confirm", language)]
             else:
-                say = [_line(_APOLOGY, language)]
+                planned = list(say)
             state = dict(call.engine_state or {})
             if (
                 (call.turn_count or 0) >= 1
                 and not state.get("disclaimer_spoken")
                 and call.outcome not in _NO_DISCLAIMER_OUTCOMES
             ):
-                say.append(kb.nfo.disclaimer(kb.amc.language(language).code))
+                planned.append(kb.nfo.disclaimer(kb.amc.language(language).code))
                 state["disclaimer_spoken"] = True
-            for text in say:
-                session.add(Turn(call_id=call.id, role=TurnRole.BOT, text=text, meta={"scripted": "webhook_error"}))
+            for text in planned:
+                session.add(
+                    Turn(call_id=call.id, role=TurnRole.BOT, text=text, meta={"scripted": "webhook_error"})
+                )
             # Ended: a retried webhook now gets a silent hang-up instead of a second conversation.
-            call.engine_state = {**state, "ended": True, "last_say": say, "last_action": "hangup"}
+            call.engine_state = {**state, "ended": True, "last_say": planned, "last_action": "hangup"}
             call.pending_action = "hangup"
             call.error = f"{stage} webhook: {type(exc).__name__}: {exc}"[:2000]
-        _record_error(session, call_id if call is not None else None, stage, provider, exc, commit=False)
+        _record_error(session, call.id if call is not None else None, stage, provider, exc, commit=False)
         session.commit()
+        # Only now: never tell someone "we won't call you again" unless the opt-out was stored.
+        say = planned
     except Exception:
         log.exception("Could not record the %s webhook failure for call %s", stage, call_id)
         try:

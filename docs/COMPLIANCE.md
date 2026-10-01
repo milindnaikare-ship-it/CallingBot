@@ -262,8 +262,10 @@ Evidence the system keeps for Compliance and internal audit:
 
 - **`audit_events`** (append-only in the application) with these event kinds:
   `disclosure_played`, `dnc_added`, `opt_out`, `compliance_flag`, `llm_error`, `llm_refusal`,
-  `link_sent`, `callback_scheduled`, `transfer`, `dial_skipped`, `dial_failed`,
-  `call_finalized`.
+  `link_sent`, `callback_scheduled`, `request_logged` (follow-up for the partner team), `transfer`,
+  `dial_skipped`, `dial_failed`, `call_finalized`, `webhook_error`, `test_call` (POC call outside a
+  campaign), `manual_status_change` and `message_marked_sent` (admin actions, with the admin's
+  username).
 - **Transcripts** (`turns`). Every bot and distributor line, with `flagged` set where the
   compliance screen replaced the bot's text.
 - **Calls**: who was called, when, by which provider, status, duration, outcome, interest level,
